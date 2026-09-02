@@ -1,0 +1,52 @@
+{
+  "name": "@obelum/translator-claude",
+  "version": "0.1.0",
+  "description": "Applies what changed in one language of a document to another, driven by Claude. A translator for Obelum-tracked documents.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxmart/obelum.git",
+    "directory": "packages/translator-claude"
+  },
+  "homepage": "https://github.com/maxmart/obelum#readme",
+  "bugs": "https://github.com/maxmart/obelum/issues",
+  "keywords": [
+    "i18n",
+    "translation",
+    "claude",
+    "anthropic",
+    "obelum"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "@obelum/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

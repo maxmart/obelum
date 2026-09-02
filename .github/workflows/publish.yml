@@ -1,7 +1,8 @@
-# Publishes to npm when a release tag is pushed (v1.2.3). Uses npm trusted
-# publishing: no token in the repo, the OIDC identity of this workflow is
-# what npm trusts. Set it up once at npmjs.com → package → Settings →
-# Trusted publisher (repository maxmart/obelum, workflow publish.yml).
+# Publishes every workspace package whose version is not yet on npm when a
+# release tag is pushed (v1.2.3). Uses npm trusted publishing: no token in
+# the repo, the OIDC identity of this workflow is what npm trusts. Set it up
+# once per package at npmjs.com → package → Settings → Trusted publisher
+# (repository maxmart/obelum, workflow publish.yml).
 name: Publish
 
 on:
@@ -21,4 +22,15 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      - run: npm publish --provenance
+      - run: npm run build
+      - name: publish what is new
+        run: |
+          for dir in packages/*; do
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already published"
+            else
+              npm publish --provenance -w "$dir"
+            fi
+          done
