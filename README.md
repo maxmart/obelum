@@ -7,8 +7,8 @@ Keeping translations of one document in step, without a server.
 | [`@obelum/core`](packages/core) | the engine: vector clocks, anchored diffs, and a history cursor. No dependencies, no I/O. |
 | [`@obelum/translator-claude`](packages/translator-claude) | a translator that applies what changed in one language to another, driven by Claude. Depends on core and the Anthropic SDK. |
 
-Planned: `@obelum/store`, which keeps revisions in a `.obelum/` folder next to
-the documents so any file format can be tracked, and a CLI on top of both.
+See [ROADMAP.md](ROADMAP.md) for what comes next: `@obelum/store` (a `.obelum/`
+folder with git-style content hashes), a CLI, and prompt regression testing for translators.
 
 ```sh
 npm install
