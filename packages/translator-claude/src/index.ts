@@ -26,5 +26,13 @@ export {
   type TranslateAgentParams,
   type TranslationEvent,
   type LangDiff,
+  type DriveFn,
 } from './translate-prompt';
+export {
+  driveClaudeAgent,
+  applyTextEdit,
+  type AgentStreamEvent,
+  type ToolReply,
+  type ClaudeAgentOptions,
+} from './claude/stream';
 export { claudeErrorMessage } from './claude/client';

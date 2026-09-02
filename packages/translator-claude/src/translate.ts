@@ -1,5 +1,5 @@
 import { generateAnchoredDiff, type SyncMeta } from '@obelum/core';
-import { translateWithAgent, type LangDiff } from './translate-prompt';
+import { translateWithAgent, type LangDiff, type DriveFn } from './translate-prompt';
 
 /**
  * One entry in the running log a translation shows on screen.
@@ -75,6 +75,8 @@ export interface TranslationDeps {
 export interface RunTranslationOptions {
   targetLang: string;
   apiKey: string;
+  /** Replace the model with a script or a recording; see DriveFn. */
+  drive?: DriveFn;
 }
 
 export interface RunTranslationCallbacks {
@@ -95,7 +97,7 @@ export async function runTranslation(
   callbacks: RunTranslationCallbacks,
 ): Promise<'done' | 'error' | 'cancelled'> {
   const { locales, read, readAtRev, dropLines, write } = deps;
-  const { targetLang, apiKey } = opts;
+  const { targetLang, apiKey, drive } = opts;
   const { onLogItem, onStatusChange, isCancelled } = callbacks;
 
   try {
@@ -155,7 +157,7 @@ export async function runTranslation(
     }
 
     const instructions = await deps.instructions?.();
-    const generator = translateWithAgent({ ...agentParams, instructions, dropLines });
+    const generator = translateWithAgent({ ...agentParams, instructions, dropLines, drive });
 
     let finalContent = '';
     let complete = false;

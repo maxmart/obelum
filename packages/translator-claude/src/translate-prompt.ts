@@ -1,6 +1,10 @@
 import { Remediation, CONFIRM_UNCHANGED } from './remediation';
 import { driveClaudeAgent, applyTextEdit, type ToolReply } from './claude/stream';
 
+/** What talks to the model. The one seam an evaluation replaces: everything
+ *  else — prompt building, the tool loop, the save rule — runs for real. */
+export type DriveFn = typeof driveClaudeAgent;
+
 /** One language's contribution to a translation: where it was at the last
  *  sync, and an anchored diff of what has changed since. */
 export interface LangDiff {
@@ -33,6 +37,9 @@ export interface TranslateAgentParams {
   /** Keep bookkeeping lines out of what the model sees. */
   dropLines: (lines: string[]) => string[];
   apiKey: string;
+  /** Stands in for the real model: a recorded transcript, a probe that only
+   *  captures the prompts. Defaults to driveClaudeAgent. */
+  drive?: DriveFn;
 }
 
 export type TranslationEvent =
@@ -182,7 +189,7 @@ export async function* translateWithAgent(
   // result, and only a success from a later turn answers it.
   const attempted = new Remediation();
 
-  const driver = driveClaudeAgent({
+  const driver = (params.drive ?? driveClaudeAgent)({
     apiKey: params.apiKey,
     system: buildSystemPrompt(params),
     userMessage: buildUserMessage(params),
