@@ -3,7 +3,7 @@ import { generateAnchoredDiff } from '../diff.js';
 /**
  * A `dropLines` filter, of the kind a caller supplies.
  *
- * These tests used to import atoll's, which is how the engine's own test
+ * These tests used to import the CMS's, which is how the engine's own test
  * suite came to depend on the document layer it exists not to know about.
  * The whole point of the parameter is that the engine never learns what a
  * revision line looks like — so neither does this file.
