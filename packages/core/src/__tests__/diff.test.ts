@@ -1,4 +1,4 @@
-import { generateAnchoredDiff } from '../diff';
+import { generateAnchoredDiff } from '../diff.js';
 
 /**
  * A `dropLines` filter, of the kind a caller supplies.

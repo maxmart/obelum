@@ -29,10 +29,10 @@
  * it declares rather than imports.
  *
  */
-export type { SyncMeta } from './types';
-export { computeStaleness, type StalenessInfo, type StalenessStatus } from './staleness';
-export { generateAnchoredDiff } from './diff';
-export { resolveRevToContent, type CommitReader } from './cursor';
+export type { SyncMeta } from './types.js';
+export { computeStaleness, type StalenessInfo, type StalenessStatus } from './staleness.js';
+export { generateAnchoredDiff } from './diff.js';
+export { resolveRevToContent, type CommitReader } from './cursor.js';
 export {
   runTranslation,
   buildTranslationRequest,
@@ -47,4 +47,4 @@ export {
   type RunTranslationCallbacks,
   type LogItem,
   type TranslationStatus,
-} from './translate';
+} from './translate.js';

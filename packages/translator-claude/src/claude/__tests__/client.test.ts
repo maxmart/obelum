@@ -9,7 +9,7 @@ describe('claudeErrorMessage', () => {
     // the failure, describing it threw too — the caller's catch never reached
     // its setState and the user saw nothing at all.
     vi.resetModules();
-    const { claudeErrorMessage } = await import('../client');
+    const { claudeErrorMessage } = await import('../client.js');
     expect(claudeErrorMessage(new Error('chunk load failed'))).toBe('chunk load failed');
     expect(claudeErrorMessage('a bare string')).toBe('a bare string');
     expect(claudeErrorMessage(null)).toBe('null');
@@ -17,7 +17,7 @@ describe('claudeErrorMessage', () => {
 
   it('is synchronous, so a catch block cannot lose it', async () => {
     vi.resetModules();
-    const { claudeErrorMessage } = await import('../client');
+    const { claudeErrorMessage } = await import('../client.js');
     expect(claudeErrorMessage(new Error('x'))).not.toBeInstanceOf(Promise);
   });
 });
@@ -28,7 +28,7 @@ describe('claudeClient', () => {
     // Expected one of apiKey, authToken, credentials, config, or profile…",
     // which lands in front of someone editing text.
     vi.resetModules();
-    const { claudeClient } = await import('../client');
+    const { claudeClient } = await import('../client.js');
     await expect(claudeClient('')).rejects.toThrow(/API key/i);
     await expect(claudeClient('')).rejects.not.toThrow(/authToken|profile/);
   });
@@ -45,7 +45,7 @@ describe('claudeClient', () => {
       return { default: FakeAnthropic, APIError: class extends Error {} };
     });
 
-    const { claudeClient } = await import('../client');
+    const { claudeClient } = await import('../client.js');
     await expect(claudeClient('sk-test')).rejects.toThrow();
     // A remembered rejection would keep translation broken until the
     // page was reloaded, long after the network came back.

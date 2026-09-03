@@ -13,8 +13,8 @@
  * history and writing come through deps, and the translating through the
  * translator.
  */
-import { generateAnchoredDiff } from './diff';
-import type { SyncMeta } from './types';
+import { generateAnchoredDiff } from './diff.js';
+import type { SyncMeta } from './types.js';
 
 // ---------------------------------------------------------------------------
 // What a translator is

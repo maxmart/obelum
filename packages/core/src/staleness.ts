@@ -1,4 +1,4 @@
-import type { SyncMeta } from './types';
+import type { SyncMeta } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Types

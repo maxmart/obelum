@@ -1,6 +1,6 @@
 {
   "name": "@obelum/translator-claude",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Applies what changed in one language of a document to another, driven by Claude. A translator for Obelum-tracked documents.",
   "license": "MIT",
   "type": "module",
@@ -40,7 +40,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
-    "@obelum/core": "^0.1.0"
+    "@obelum/core": "^0.1.1"
   },
   "devDependencies": {
     "typescript": "^5.9.2",

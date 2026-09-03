@@ -2,8 +2,8 @@
  * The runner, with a scripted translator: which versions it asks for, what
  * it puts in the request, and when it is willing to save.
  */
-import { runTranslation, buildTranslationRequest } from '../translate';
-import type { TranslationDeps, Translator, TranslationEvent, TranslationRequest, Version } from '../translate';
+import { runTranslation, buildTranslationRequest } from '../translate.js';
+import type { TranslationDeps, Translator, TranslationEvent, TranslationRequest, Version } from '../translate.js';
 
 const drop = (lines: string[]) => lines.filter(l => !/^(rev|synced):/.test(l));
 

@@ -11,12 +11,12 @@
  * document, or the decision whether a result may be saved: those are the
  * runner's, in @obelum/core.
  */
-export { claude, translateWithClaude, type ClaudeTranslatorOptions, type DriveFn } from './claude';
+export { claude, translateWithClaude, type ClaudeTranslatorOptions, type DriveFn } from './claude.js';
 export {
   driveClaudeAgent,
   applyTextEdit,
   type AgentStreamEvent,
   type ToolReply,
   type ClaudeAgentOptions,
-} from './claude/stream';
-export { claudeErrorMessage } from './claude/client';
+} from './claude/stream.js';
+export { claudeErrorMessage } from './claude/client.js';

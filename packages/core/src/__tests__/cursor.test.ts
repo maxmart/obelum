@@ -6,8 +6,8 @@
  * verify early stopping behaviour.
  */
 
-import { resolveRevToContent } from '../cursor';
-import type { CommitReader } from '../cursor';
+import { resolveRevToContent } from '../cursor.js';
+import type { CommitReader } from '../cursor.js';
 
 /**
  * What a revision looks like, supplied by the caller — which is the point.

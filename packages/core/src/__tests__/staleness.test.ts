@@ -1,5 +1,5 @@
-import { computeStaleness, StalenessInfo } from '../staleness';
-import type { SyncMeta } from '../types';
+import { computeStaleness, StalenessInfo } from '../staleness.js';
+import type { SyncMeta } from '../types.js';
 
 // Helper to build a null-filled metas map for missing langs
 function metas(

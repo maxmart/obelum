@@ -17,7 +17,7 @@
 
 import type AnthropicClient from '@anthropic-ai/sdk';
 import type Anthropic from '@anthropic-ai/sdk';
-import { claudeClient, claudeErrorMessage } from './client';
+import { claudeClient, claudeErrorMessage } from './client.js';
 
 export type AgentStreamEvent =
   | { type: 'thinking' }

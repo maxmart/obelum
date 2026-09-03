@@ -9,8 +9,8 @@
  * model gets told when one did not land.
  */
 import type { Translator, TranslationRequest, TranslationEvent } from '@obelum/core';
-import { Remediation, CONFIRM_UNCHANGED } from './remediation';
-import { driveClaudeAgent, applyTextEdit, type ToolReply } from './claude/stream';
+import { Remediation, CONFIRM_UNCHANGED } from './remediation.js';
+import { driveClaudeAgent, applyTextEdit, type ToolReply } from './claude/stream.js';
 
 /** What talks to the model. The one seam an evaluation replaces: everything
  *  else — prompt building, the tool loop, the remediation rule — runs for real. */

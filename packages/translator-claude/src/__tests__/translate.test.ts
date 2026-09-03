@@ -5,8 +5,8 @@
  * replaced through the `drive` option.
  */
 import { runTranslation, type TranslationDeps, type Version } from '@obelum/core';
-import { claude, type DriveFn } from '../index';
-import type { AgentStreamEvent, ClaudeAgentOptions } from '../claude/stream';
+import { claude, type DriveFn } from '../index.js';
+import type { AgentStreamEvent, ClaudeAgentOptions } from '../claude/stream.js';
 
 let script: (opts: ClaudeAgentOptions) => AgentStreamEvent[] = () => [{ type: 'stop', reason: 'end_turn' }];
 let captured: ClaudeAgentOptions | undefined;

@@ -1,6 +1,6 @@
 {
   "name": "@obelum/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Vector-clock sync tracking for translated documents: staleness, anchored diffs, and a lazy history cursor",
   "license": "MIT",
   "type": "module",
