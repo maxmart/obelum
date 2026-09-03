@@ -16,13 +16,11 @@ translates from the full current content instead.
 Edits arrive as exact string replacements the way a code agent makes them,
 and a run whose edits did not all land is never saved.
 
-## The contract
-
-Everything the run touches comes through `TranslationDeps`, bound to one
-document by you:
+## Use
 
 ```ts
-import { runTranslation, type TranslationDeps } from '@obelum/translator-claude';
+import { runTranslation, type TranslationDeps } from '@obelum/core';
+import { claude } from '@obelum/translator-claude';
 
 const deps: TranslationDeps = {
   locales: ['en', 'sv', 'no'],
@@ -38,7 +36,7 @@ const deps: TranslationDeps = {
   instructions: async () => glossary,
 };
 
-const result = await runTranslation(deps, { targetLang: 'sv', apiKey }, {
+const result = await runTranslation(deps, claude({ apiKey }), { targetLang: 'sv' }, {
   onLogItem: item => console.log(item),
   onStatusChange: status => console.log(status),
   isCancelled: () => false,
@@ -46,9 +44,15 @@ const result = await runTranslation(deps, { targetLang: 'sv', apiKey }, {
 // 'done' | 'error' | 'cancelled'
 ```
 
-The package never reads a file, parses a frontmatter, or walks a git log.
-Where revisions live and how an older version is found are yours, so the
-same translator works over frontmatter, a sidecar folder, or a database.
+The runner, the deps contract and the save rule are `@obelum/core`'s. This
+package is the `Translator`: it turns the request into two prompts and two
+tools (`edit_file` for targeted changes, `write_file` for a new or rewritten
+document), applies the edits as they arrive, and reports the run complete
+only when every edit that failed was later put right. It never reads a file,
+parses a frontmatter, or walks a git log.
+
+For evaluations, `claude({ apiKey, drive })` replaces what talks to the model
+with a recorded transcript or a probe; everything else runs for real.
 
 ## The API key
 

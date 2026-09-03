@@ -1,55 +1,34 @@
+/**
+ * A Translator backed by Claude.
+ *
+ * Obelum's runner decides what changed and whether a result may be saved;
+ * this decides how to ask a model to apply it. The request arrives as data
+ * (target, per-language base and diff, or full contents) and goes out as
+ * two prompts and two tools: edit_file for targeted changes, write_file for
+ * a new or rewritten document. Edits are applied here, in the loop, so the
+ * model gets told when one did not land.
+ */
+import type { Translator, TranslationRequest, TranslationEvent } from '@obelum/core';
 import { Remediation, CONFIRM_UNCHANGED } from './remediation';
 import { driveClaudeAgent, applyTextEdit, type ToolReply } from './claude/stream';
 
 /** What talks to the model. The one seam an evaluation replaces: everything
- *  else — prompt building, the tool loop, the save rule — runs for real. */
+ *  else — prompt building, the tool loop, the remediation rule — runs for real. */
 export type DriveFn = typeof driveClaudeAgent;
 
-/** One language's contribution to a translation: where it was at the last
- *  sync, and an anchored diff of what has changed since. */
-export interface LangDiff {
-  lang: string;
-  /** Content at the time of the last sync. */
-  base: string;
-  /** Anchored diff showing what changed since. */
-  diff: string;
-}
-
-/**
- * Everything the agent needs for one run.
- */
-export interface TranslateAgentParams {
-  targetLang: string;
-  /** Current content of the target file. */
-  targetContent: string;
-  /** Diffs from every language, including the target, that changed since the
-   *  last sync. */
-  langDiffs: LangDiff[];
-  /** When no sync point exists, the current content of every language, for a
-   *  full translation rather than a diff. */
-  fullSyncContents?: { lang: string; content: string }[];
-  /**
-   * Extra rules for the model, injected verbatim into the system prompt: a
-   * glossary, which parts of the format are code rather than content, house
-   * style.
-   */
-  instructions?: string;
-  /** Keep bookkeeping lines out of what the model sees. */
-  dropLines: (lines: string[]) => string[];
+export interface ClaudeTranslatorOptions {
   apiKey: string;
   /** Stands in for the real model: a recorded transcript, a probe that only
    *  captures the prompts. Defaults to driveClaudeAgent. */
   drive?: DriveFn;
 }
 
-export type TranslationEvent =
-  | { type: 'thinking' }
-  | { type: 'reasoning'; text: string }
-  | { type: 'edit'; edit: { old_string: string; new_string: string } }
-  | { type: 'error'; error: string }
-  /** `complete` is false when the run stopped for any reason other than the
-   *  model finishing cleanly — the result must not be saved then. */
-  | { type: 'done'; finalContent: string; complete: boolean };
+/** A Translator that asks Claude. Hand it to @obelum/core's runTranslation. */
+export function claude(options: ClaudeTranslatorOptions): Translator {
+  return {
+    translate: request => translateWithClaude(request, options),
+  };
+}
 
 const WRITE_FILE_TOOL = {
   name: 'write_file',
@@ -87,7 +66,7 @@ const EDIT_FILE_TOOL = {
   },
 };
 
-function buildSystemPrompt(params: TranslateAgentParams): string {
+function buildSystemPrompt(params: TranslationRequest): string {
   const { targetLang, langDiffs, fullSyncContents, instructions } = params;
 
   // The caller's instructions are law: appended to whichever prompt applies
@@ -141,7 +120,7 @@ ${targetChanged ? `- Changes already made to ${targetLang} should be kept — do
 - If no changes are needed, say so.${rulesSection}`;
 }
 
-function buildUserMessage(params: TranslateAgentParams): string {
+function buildUserMessage(params: TranslationRequest): string {
   const { targetLang, targetContent, langDiffs, fullSyncContents, dropLines } = params;
   /** Bookkeeping is not translatable content; keep it out of what Claude sees. */
   const shown = (content: string) => dropLines(content.split('\n')).join('\n');
@@ -181,16 +160,17 @@ ${shown(targetContent)}
 Apply the equivalent changes to the ${targetLang} file.`;
 }
 
-export async function* translateWithAgent(
-  params: TranslateAgentParams,
+export async function* translateWithClaude(
+  params: TranslationRequest,
+  options: ClaudeTranslatorOptions,
 ): AsyncGenerator<TranslationEvent> {
   let currentContent = params.targetContent;
   // See Remediation: a failed edit means its change is missing from the
   // result, and only a success from a later turn answers it.
   const attempted = new Remediation();
 
-  const driver = (params.drive ?? driveClaudeAgent)({
-    apiKey: params.apiKey,
+  const driver = (options.drive ?? driveClaudeAgent)({
+    apiKey: options.apiKey,
     system: buildSystemPrompt(params),
     userMessage: buildUserMessage(params),
     tools: [EDIT_FILE_TOOL, WRITE_FILE_TOOL],

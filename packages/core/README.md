@@ -27,6 +27,7 @@ the outside are passed in as arguments:
 | you pass | so that |
 |---|---|
 | `SyncMeta` values | it never has to know where you store a revision |
+| a `Translator` | who does the translating is not its business either |
 | a `dropLines` filter | your bookkeeping lines stay out of the diff |
 | a `CommitReader` | any three methods shaped like a git log will do |
 
@@ -72,10 +73,37 @@ Walks back from HEAD one commit at a time until `revOf(content)` equals
 never found, which is how a document that predates revision tracking asks
 for a full-content sync instead of a diff.
 
+### runTranslation(deps, translator, { targetLang }, callbacks)
+
+The runner. Given how one document is stored (`TranslationDeps`: read a
+language's current version with its `SyncMeta`, read the version at an older
+revision, drop bookkeeping lines, write) and something that can translate
+(`Translator`: one method that takes a request and streams events), it
+gathers what changed in every language since the target last synced, hands
+that to the translator, and saves the result. A result the translator did
+not finish is never saved: stamping a partial translation as synced would
+hide the loss forever, so that rule lives here, next to the clocks it
+protects, and not in any translator.
+
+```ts
+import { runTranslation } from '@obelum/core';
+import { claude } from '@obelum/translator-claude';
+
+await runTranslation(deps, claude({ apiKey }), { targetLang: 'sv' }, {
+  onLogItem: item => console.log(item),
+  onStatusChange: status => console.log(status),
+  isCancelled: () => false,
+});
+```
+
+A `Translator` is anything with `translate(request)`. Claude is one; a
+different model, a service, or a person at a form are others.
+
 ## Why it is separate
 
-Four files, and the only import anywhere inside them is one type between two
-of them. A separate package means a compiler enforces what a code review used
+Five files, and the only imports anywhere inside them are between two of
+them. Even the runner performs no I/O: it reads, writes and translates
+through what it is handed. A separate package means a compiler enforces what a code review used
 to: nothing in here can reach for a CMS, a browser, or a build tool without
 failing to install. If this package ever gains a dependency, something has
 been added that does not belong in it.

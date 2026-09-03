@@ -18,6 +18,13 @@
  *                                                 log; `revOf` reads a
  *                                                 revision out of your format
  *
+ *   runTranslation(deps, translator, opts, callbacks)
+ *                                               — the runner: gathers the
+ *                                                 above for one document,
+ *                                                 hands it to a Translator
+ *                                                 you supply, saves only a
+ *                                                 complete result
+ *
  * That is the whole surface. See CommitReader in cursor.ts for the interface
  * it declares rather than imports.
  *
@@ -26,3 +33,18 @@ export type { SyncMeta } from './types';
 export { computeStaleness, type StalenessInfo, type StalenessStatus } from './staleness';
 export { generateAnchoredDiff } from './diff';
 export { resolveRevToContent, type CommitReader } from './cursor';
+export {
+  runTranslation,
+  buildTranslationRequest,
+  mergeLogItem,
+  type Translator,
+  type TranslationRequest,
+  type TranslationEvent,
+  type LangDiff,
+  type TranslationDeps,
+  type Version,
+  type RunTranslationOptions,
+  type RunTranslationCallbacks,
+  type LogItem,
+  type TranslationStatus,
+} from './translate';

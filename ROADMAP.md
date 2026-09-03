@@ -55,12 +55,20 @@ commands. A CMS hands the same packages a browser filesystem and
 isomorphic-git. That is the test of the layering: same `core`, same `store`,
 two hosts, nothing shared between the hosts.
 
+## More translators
+
+`runTranslation` in core takes any `Translator`. Claude is the one that
+exists. Candidates: another model, a translation service, a person at a
+form (the runner shows what changed and takes back the result). Each is its
+own package, `@obelum/translator-<name>`, and none of them owns the save
+rule.
+
 ## Prompt verification for translators
 
-The translator's product is its prompts: the two system prompts, the user
-message layout, the tool design, and the rule that an unanswered failed edit
-means the run is not saved. The five contract tests in `translator-claude`
-pin the plumbing, not the quality.
+The Claude translator's product is its prompts: the two system prompts, the
+user message layout, the tool design, and the rule that an unanswered failed
+edit means the run is not complete. Its unit tests pin the plumbing, not the
+quality.
 
 The CMS this came out of has an evaluation suite for that (scenario
 documents, recorded transcripts keyed to the exact prompts, a harness that
