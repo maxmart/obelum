@@ -1,0 +1,17 @@
+{
+  "name": "obelum",
+  "version": "0.1.0",
+  "description": "Keeping translations of one document in step, without a server. The same package as @obelum/core.",
+  "license": "MIT",
+  "type": "module",
+  "repository": { "type": "git", "url": "git+https://github.com/maxmart/obelum.git", "directory": "packages/obelum" },
+  "homepage": "https://github.com/maxmart/obelum#readme",
+  "keywords": ["i18n", "translation", "vector-clock", "diff", "sync", "localization"],
+  "files": ["index.js", "index.d.ts", "README.md", "LICENSE"],
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": { ".": { "types": "./index.d.ts", "default": "./index.js" } },
+  "sideEffects": false,
+  "dependencies": { "@obelum/core": "^0.1.0" },
+  "publishConfig": { "access": "public" }
+}
