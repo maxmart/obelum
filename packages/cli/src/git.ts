@@ -5,8 +5,10 @@
  * state is what the copies describe, and a verb is a commit. `git ls-tree`
  * once gives every path's blob id; contents come through one long-lived
  * `git cat-file --batch`, cached by id, so a copy that equals its real file
- * is read once. Writes go to the working directory and are committed by
- * path, so an uncommitted change elsewhere is left where it was.
+ * is read once. Writes become blobs and a commit on top of HEAD without
+ * passing through the working directory or the index, so nothing the user
+ * has staged or edited is touched, and a sparse checkout that leaves
+ * `.obelum/` off disk works as it is.
  */
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -115,13 +117,6 @@ export class Git {
     return next;
   }
 
-  /** Write into the working directory. The commit picks it up by path. */
-  write(p: string, content: string): void {
-    const full = path.join(this.root, p);
-    fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, content);
-  }
-
   /** The working-directory content, or null. Used to take a hand edit in. */
   readWorking(p: string): string | null {
     const full = path.join(this.root, p);
@@ -129,12 +124,79 @@ export class Git {
     return fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n');
   }
 
-  /** Commit exactly these paths as they stand in the working directory. */
-  commit(message: string, paths: string[]): void {
-    if (paths.length === 0) return;
-    execFileSync('git', ['add', '--', ...paths], { cwd: this.root, stdio: 'pipe' });
-    execFileSync('git', ['commit', '-q', '-m', message, '--', ...paths], { cwd: this.root, stdio: 'pipe' });
+  /**
+   * Commit exactly these files, on top of HEAD, through objects: each
+   * content becomes a blob, a temporary index holds HEAD's tree plus these
+   * entries, and the resulting tree is committed and HEAD moved. The
+   * repository's own index and working directory are then brought up to
+   * date for these paths only, so whatever else the user has staged or
+   * edited is left exactly as it was.
+   *
+   * A path that is not checked out — the copies, under a sparse checkout
+   * that excludes `.obelum/` — gets an index entry with skip-worktree and
+   * nothing on disk. The rule: copies go to disk when `.obelum/` is checked
+   * out; real files always do.
+   */
+  commit(message: string, files: Map<string, string>): void {
+    if (files.size === 0) return;
+    const oids = new Map<string, string>();
+    for (const [p, content] of files) {
+      oids.set(p, execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: this.root, input: content, encoding: 'utf8' }).trim());
+    }
+    const tmp = path.join(this.root, '.git', `obelum-index-${process.pid}`);
+    const env = { ...process.env, GIT_INDEX_FILE: tmp };
+    try {
+      const head = this.headOid();
+      if (head) execFileSync('git', ['read-tree', 'HEAD'], { cwd: this.root, env, stdio: 'pipe' });
+      else execFileSync('git', ['read-tree', '--empty'], { cwd: this.root, env, stdio: 'pipe' });
+      for (const [p, oid] of oids) {
+        execFileSync('git', ['update-index', '--add', '--cacheinfo', `100644,${oid},${p}`], { cwd: this.root, env, stdio: 'pipe' });
+      }
+      const tree = execFileSync('git', ['write-tree'], { cwd: this.root, env, encoding: 'utf8' }).trim();
+      const commit = execFileSync('git', ['commit-tree', tree, ...(head ? ['-p', head] : []), '-m', message], { cwd: this.root, encoding: 'utf8' }).trim();
+      execFileSync('git', ['update-ref', 'HEAD', commit], { cwd: this.root, stdio: 'pipe' });
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+    const copiesOnDisk = this.copiesCheckedOut();
+    for (const [p, content] of files) {
+      const oid = oids.get(p)!;
+      execFileSync('git', ['update-index', '--add', '--cacheinfo', `100644,${oid},${p}`], { cwd: this.root, stdio: 'pipe' });
+      if (p.startsWith('.obelum/') && !copiesOnDisk) {
+        execFileSync('git', ['update-index', '--skip-worktree', '--', p], { cwd: this.root, stdio: 'pipe' });
+        continue;
+      }
+      const full = path.join(this.root, p);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content);
+    }
     this.refresh();
+  }
+
+  private headOid(): string | null {
+    try {
+      return execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: this.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Whether `.obelum/` is part of this checkout: its index entries are not
+   *  skip-worktree, or there are none yet and the checkout is not sparse. */
+  private copiesCheckedOut(): boolean {
+    let flags: string;
+    try {
+      flags = execFileSync('git', ['ls-files', '-t', '--', '.obelum'], { cwd: this.root, encoding: 'utf8' });
+    } catch {
+      flags = '';
+    }
+    const entries = flags.split('\n').filter(Boolean);
+    if (entries.length > 0) return entries.some(l => l.startsWith('H '));
+    try {
+      return execFileSync('git', ['config', '--get', 'core.sparseCheckout'], { cwd: this.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() !== 'true';
+    } catch {
+      return true;
+    }
   }
 
   /** `git log` of merge commits: hash and parents. */

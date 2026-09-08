@@ -21,15 +21,14 @@ export interface Host {
 export function host(git: Git, config: Config): Host {
   const anchor = ANCHORS[config.anchor ?? 'git'];
 
-  const describe = (key: string, onCommit: (message: string, paths: string[]) => void): Document => {
-    let staged: string[] = [];
+  const describe = (key: string, onCommit: (message: string, files: Map<string, string>) => void): Document => {
     // What a verb has written but not yet committed. Reads are HEAD's, and a
     // verb reads back what it just wrote (sync snapshots the file it saved),
-    // so the pending writes overlay HEAD until the verb's commit.
-    const pending = new Map<string, string>();
+    // so the pending writes overlay HEAD until the verb's commit takes them.
+    let pending = new Map<string, string>();
     const file = (p: string) => ({
       read: () => pending.has(p) ? pending.get(p)! : git.read(p),
-      write: (content: string) => { git.write(p, content); pending.set(p, content); staged.push(p); },
+      write: (content: string) => { pending.set(p, content); },
     });
     return {
       langs: config.langs,
@@ -37,10 +36,9 @@ export function host(git: Git, config: Config): Host {
       synced: viewer => ({ file: lang => file(copyPath(viewer, realPath(key, lang))) }),
       anchor,
       commit: (verb, lang) => {
-        const paths = staged;
-        staged = [];
-        onCommit(`${verb} ${key.replace('{lang}', lang)}`, paths);
-        pending.clear();
+        const files = pending;
+        pending = new Map();
+        onCommit(`${verb} ${key.replace('{lang}', lang)}`, files);
       },
     };
   };
@@ -48,12 +46,12 @@ export function host(git: Git, config: Config): Host {
   return {
     git,
     config,
-    document: key => obelum(describe(key, (message, paths) => git.commit(message, paths))),
+    document: key => obelum(describe(key, (message, files) => git.commit(message, files))),
     batched() {
-      const pending: string[] = [];
+      const all = new Map<string, string>();
       return {
-        document: key => obelum(describe(key, (_message, paths) => { pending.push(...paths); })),
-        flush: message => { git.commit(message, pending.splice(0)); },
+        document: key => obelum(describe(key, (_message, files) => { for (const [p, c] of files) all.set(p, c); })),
+        flush: message => { git.commit(message, new Map(all)); all.clear(); },
       };
     },
   };

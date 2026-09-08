@@ -7,18 +7,15 @@ What Obelum is meant to grow into, in the order it should happen.
 `packages/cli` has `status`, `brief`, the four verbs, `translate` (one
 language or a round), `mark --all` for migration, and `check`. Still to do:
 documents whose language is not a path segment (an unprefixed default
-locale), `translate` over every document at once, and reading copies from
-git objects rather than the working directory (next section).
+locale) and `translate` over every document at once.
 
-## Hosts on git objects alone
+## Browser hosts on git objects alone
 
-Core reads and writes only through the host's `file()`, so a host can keep
-the copies out of the working directory entirely: read `HEAD:path`, write
-with `hash-object` and `update-index` (isomorphic-git's `writeBlob` and
-`writeTree` in the browser), and let a sparse checkout exclude `.obelum/`.
-The verbs do not change; only the five lines of the host's `file()` do. What
-it needs from a host is a commit that combines the checkout's index with the
-object-only paths, which is where the work is.
+The CLI already works on objects: reads from HEAD, commits built from blobs
+and a temporary index, and copies kept off disk under a sparse checkout. The
+browser host (plinto over isomorphic-git) still reads and writes the copies
+through its filesystem. The same shape applies there — `writeBlob`,
+`writeTree`, `commit` — and would keep the copies out of lightning-fs.
 
 ## Hunk-level fix
 

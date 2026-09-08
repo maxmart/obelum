@@ -61,6 +61,20 @@ so the flow for a correction is: edit the file, `obelum fix <file>`. A
 translation produced elsewhere lands with `obelum sync <file> --from
 translation.mdx` or `… --from -` on stdin.
 
+**Commits go through objects, not the index.** A verb writes blobs and a
+commit on top of HEAD and then refreshes only its own paths in the checkout,
+so whatever else you have staged or edited is untouched. That also means the
+copies need not be on disk at all:
+
+```sh
+git sparse-checkout set --no-cone '/*' '!/.obelum/'
+```
+
+keeps `.obelum/` out of the working directory, and every command works the
+same, reading copies from objects and writing them as index entries with
+`skip-worktree`. Copies are written to disk only when `.obelum/` is checked
+out; real files always are.
+
 ### status
 
 ```
@@ -116,9 +130,8 @@ factory in the `Io` stands in for Claude, which is how the tests script it.
 ## Not yet
 
 Documents whose language is not a path segment (an unprefixed default locale
-at the pages root) have no pattern here yet. The copies live in the working
-directory; a host on git objects alone, with `.obelum/` sparse-checked-out,
-is on the roadmap.
+at the pages root) have no pattern here yet, and `translate` runs over one
+document at a time.
 
 ## License
 

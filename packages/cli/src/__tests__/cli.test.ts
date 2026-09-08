@@ -203,3 +203,36 @@ describe('check', () => {
     expect(c.out).toContain('sv claims a sync with no it never made');
   });
 });
+
+describe('object mode', () => {
+  it('leaves staged and unstaged work elsewhere untouched, and commits only the verb\'s paths', async () => {
+    await obelum('mark', '--all');
+    write('README.md', 'staged\n'); git('add', 'README.md');
+    write('src/pages/en/pricing.mdx', page('en', 'dirty, not part of this'));
+    write('src/pages/no/pricing.mdx', page('no', ...ABC, 'Vipps'));
+    await obelum('edit', 'src/pages/no/pricing.mdx');
+    expect(git('show', '--stat', '--format=', 'HEAD')).toContain('1 file changed');
+    expect(git('status', '--porcelain')).toBe('A  README.md\n M src/pages/en/pricing.mdx');
+  });
+
+  it('works under a sparse checkout that keeps .obelum/ off disk', async () => {
+    execFileSync('git', ['sparse-checkout', 'set', '--no-cone', '/*', '!/.obelum/'], { cwd: root, env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+    await obelum('mark', '--all');
+    expect(fs.existsSync(path.join(root, '.obelum'))).toBe(false);
+    expect(git('ls-tree', '-r', '--name-only', 'HEAD').split('\n').filter(p => p.startsWith('.obelum/')).length).toBe(13);
+    expect(git('status', '--porcelain')).toBe('');
+
+    write('src/pages/no/pricing.mdx', page('no', ...ABC, 'Vipps'));
+    await obelum('edit', 'src/pages/no/pricing.mdx');
+    expect((await obelum('status')).out).toContain('sv: stale (no)');
+    stdinText = page('sv', ...ABC, 'Swish');
+    const s = await obelum('sync', 'src/pages/sv/pricing.mdx', '--from', '-');
+    expect(s.code).toBe(0);
+    expect(head('.obelum/sv/src/pages/no/pricing.mdx')).toBe(page('no', ...ABC, 'Vipps'));
+    expect(at('src/pages/sv/pricing.mdx')).toBe(stdinText);       // the real file is checked out
+    expect(fs.existsSync(path.join(root, '.obelum'))).toBe(false);  // the copies still are not
+    expect(git('status', '--porcelain')).toBe('');
+    expect((await obelum('status')).out).toContain('en: stale (no)');
+    expect((await obelum('check')).out).toBe('.obelum/ is clean');
+  });
+});
