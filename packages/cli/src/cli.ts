@@ -241,7 +241,9 @@ async function translate(h: Host, args: Args, io: Io): Promise<number> {
     const b = await session.brief(t);
     if (b.langDiffs.length === 0) { io.stdout(`${realPath(key, t)}: synced; skipped`); continue; }
     io.stderr(`translating ${realPath(key, t)} from ${b.langDiffs.filter(d => d.lang !== t).map(d => d.lang).join(', ')}…`);
-    const content = await translator.run(b, { onEvent: e => report(e, io) });
+    const events = reporter(io);
+    const content = await translator.run(b, { onEvent: events.onEvent });
+    events.flush();
     if (content === null) { io.stderr(`${realPath(key, t)}: the translation did not complete; not saved`); failed++; continue; }
     const r = await round.sync(t, content);
     io.stdout(`sync ${realPath(key, t)}: committed` + (r.conflicted.length ? `; left alone for ${r.conflicted.join(', ')}` : ''));
@@ -253,10 +255,32 @@ async function translate(h: Host, args: Args, io: Io): Promise<number> {
   return failed ? 1 : 0;
 }
 
-function report(e: { type: string; [k: string]: unknown }, io: Io): void {
-  if (e.type === 'reasoning') io.stderr(String(e.text));
-  else if (e.type === 'edit') io.stderr(`  edit: ${String((e.edit as { old_string: string }).old_string).slice(0, 60).replace(/\n/g, ' ')}…`);
-  else if (e.type === 'error') io.stderr(`  error: ${String(e.error)}`);
+/**
+ * The translator's events, as lines on stderr. Everything from the model is
+ * prefixed with `│ ` so it reads apart from the command's own lines.
+ * Reasoning streams in fragments of a few words; they are buffered and
+ * written at a newline, or when another kind of event arrives, so a
+ * sentence stays one line.
+ */
+function reporter(io: Io): { onEvent: (e: { type: string; [k: string]: unknown }) => void; flush: () => void } {
+  let text = '';
+  const model = (line: string) => { if (line.trim()) io.stderr(`│ ${line.trim()}`); };
+  const flush = () => { model(text); text = ''; };
+  return {
+    flush,
+    onEvent: e => {
+      if (e.type === 'reasoning') {
+        text += String(e.text);
+        const lines = text.split('\n');
+        text = lines.pop() ?? '';
+        lines.forEach(model);
+        return;
+      }
+      flush();
+      if (e.type === 'edit') model(`edit: ${String((e.edit as { old_string: string }).old_string).slice(0, 60).replace(/\n/g, ' ')}…`);
+      else if (e.type === 'error') model(`error: ${String(e.error)}`);
+    },
+  };
 }
 
 async function claudeTranslator(withFlag: string | boolean | undefined): Promise<NonNullable<Io['translator']>> {
