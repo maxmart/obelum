@@ -240,7 +240,9 @@ async function translate(h: Host, args: Args, io: Io): Promise<number> {
   for (const t of targets) {
     const b = await session.brief(t);
     if (b.langDiffs.length === 0) { io.stdout(`${realPath(key, t)}: synced; skipped`); continue; }
-    io.stderr(`translating ${realPath(key, t)} from ${b.langDiffs.filter(d => d.lang !== t).map(d => d.lang).join(', ')}…`);
+    const changed = b.langDiffs.filter(d => d.lang !== t).map(d => d.lang);
+    const own = b.langDiffs.some(d => d.lang === t) ? `; ${t} itself changed too` : '';
+    io.stderr(`${realPath(key, t)}: bringing up to date with changes in ${changed.join(', ')}${own}…`);
     const events = reporter(io);
     const content = await translator.run(b, { onEvent: events.onEvent });
     events.flush();
