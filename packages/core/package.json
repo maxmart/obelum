@@ -1,0 +1,54 @@
+{
+  "name": "@obelum/core",
+  "version": "0.2.0",
+  "description": "Sync tracking for translated documents: every language keeps a copy of what it last saw of the others; staleness and the translator's brief are diffs against those copies",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxmart/obelum.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/maxmart/obelum#readme",
+  "bugs": "https://github.com/maxmart/obelum/issues",
+  "keywords": [
+    "i18n",
+    "translation",
+    "three-way-merge",
+    "diff",
+    "sync",
+    "localization"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "diff": "^9.0.0",
+    "node-diff3": "^3.2.1"
+  }
+}
