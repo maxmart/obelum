@@ -1,24 +1,14 @@
 # Roadmap
 
-What Obelum is meant to grow into, in the order it should happen. None of this
-is started.
+What Obelum is meant to grow into, in the order it should happen.
 
-## `@obelum/cli`
+## `@obelum/cli` — started
 
-A Node host over `core`:
-
-```
-obelum status                      which languages of which documents are behind
-obelum brief docs/en/pricing.md sv what sv would be told: per language, base and diff
-obelum translate ... --with claude drive a translator package
-obelum check                       .obelum/ parses, no orphaned copies, no mixed-side merge resolutions
-```
-
-It opens each document over plain `git` (objects, so a sparse checkout
-without `.obelum/` on disk works) and commits through `git commit`. A CMS
-hands the same core an in-browser store and isomorphic-git.
-That is the test of the layering: same `core`, two hosts, nothing shared
-between the hosts.
+`packages/cli` has `status`, `brief`, the four verbs, `translate` (one
+language or a round), `mark --all` for migration, and `check`. Still to do:
+documents whose language is not a path segment (an unprefixed default
+locale), `translate` over every document at once, and reading copies from
+git objects rather than the working directory (next section).
 
 ## Hosts on git objects alone
 

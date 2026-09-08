@@ -1,0 +1,45 @@
+{
+  "name": "@obelum/cli",
+  "version": "0.2.0",
+  "description": "The obelum command: status, briefs, the four verbs, translation rounds and an auditor over an Obelum-tracked repository, using plain git",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxmart/obelum.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/maxmart/obelum#readme",
+  "bugs": "https://github.com/maxmart/obelum/issues",
+  "keywords": ["i18n", "translation", "sync", "localization", "cli", "obelum"],
+  "files": ["dist", "README.md", "LICENSE"],
+  "bin": { "obelum": "./dist/bin.js" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "dependencies": {
+    "@obelum/core": "^0.2.0"
+  },
+  "peerDependencies": {
+    "@obelum/translator-claude": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@obelum/translator-claude": { "optional": true }
+  },
+  "devDependencies": {
+    "@obelum/translator-claude": "^0.2.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": { "access": "public" }
+}
