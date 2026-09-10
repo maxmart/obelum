@@ -1,12 +1,13 @@
 # Obelum
 
 Keeping a document in step across languages, where every language is a
-peer: edit any of them and the change propagates to the others. No server,
-no primary language, no clock. Obelum is experimental.
+peer: edit any of them and the change propagates to the others. It runs
+over a plain git repository, with an LLM as the translator. Obelum is
+experimental.
 
 ## Why
 
-A translated document drifts. Someone fixes a paragraph in English and the
+A translated document tends to drift over time. Someone fixes a paragraph in English and the
 Swedish page silently goes out of date; someone tunes the Swedish wording
 for a Swedish audience and the next automated translation flattens it back
 into English-shaped Swedish.
@@ -16,13 +17,13 @@ regenerating the others from it. That keeps the translations current, but
 it makes them disposable: nothing you do to a translation survives the next
 run, and nobody can *edit* a translation and have that edit mean anything.
 
-Obelum starts from what a good translator actually needs. Not the source
-document, but two things:
+Obelum gives the translator two things beyond the source document:
 
 1. **The target as it is now**, so the terms and voice already in use there
    are kept, and localized passages stay localized.
-2. **What changed in the source since the target last looked**, so only the
-   change is carried over and everything else in the target is left alone.
+2. **What changed in the source since the target last looked**, as a diff,
+   so the job is to carry that change over, and everything else in the
+   target is left alone.
 
 Given that, a Spanish page can be structured differently from the English
 one and still receive the English edits. And once "what changed since you
