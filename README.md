@@ -3,7 +3,7 @@
 Keeping a document in step across languages, where every language is a
 peer: edit any of them and the change propagates to the others. It runs
 over a plain git repository, with an LLM as the translator. Obelum is
-experimental. It is used by [Plinto](PLINTO_URL), a CMS admin for git-backed
+experimental. It is used by [Plinto](https://github.com/maxmart/plinto), a CMS admin for git-backed
 sites.
 
 ## Why
