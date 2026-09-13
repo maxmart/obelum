@@ -1,30 +1,33 @@
 # Obelum
 
-Keeping a document in step across languages, where every language is a
-peer: edit any of them and the change propagates to the others. It runs
-over a plain git repository, with an LLM as the translator. Obelum is
-experimental. It is used by [Plinto](https://github.com/maxmart/plinto), a CMS admin for git-backed
-sites.
+Obelum is a typescript library to help keep documents in sync between languages, where every language is a
+peer: edit any of them and have changes propagate to the others. 
+Also supports keeping language versions structurally different - for localizing marketing for example.
+
+Designed to use git for history and an LLM as the translator, but not locked to it. 
+
+Obelum is experimental. 
+It is used by [Plinto](https://github.com/maxmart/plinto), a CMS admin for static git-backed sites.
 
 ## Why
 
 A translated document tends to drift over time. Someone fixes a paragraph in English and the
-Swedish page silently goes out of date; someone tunes the Swedish wording
-for a Swedish audience and the next automated translation flattens it back
-into English-shaped Swedish.
+Swedish page silently goes out of date, or someone corrects the Swedish wording
+and the next automated translation from English overwrites it.
 
 The usual tools solve half of this by declaring one language the source and
 regenerating the others from it. That keeps the translations current, but
-it makes them disposable: nothing you do to a translation survives the next
-run, and nobody can *edit* a translation and have that edit mean anything.
+it makes them disposable: correcting a translation doesn't survive the next
+run.
 
-Obelum gives the translator two things beyond the source document:
+Obelum keeps track of history in a special way so it can give the translator better context. It gives the translator:
 
-1. **The target as it is now**, so the terms and voice already in use there
-   are kept, and localized passages stay localized.
-2. **What changed in the source since the target last looked**, as a diff,
-   so the job is to carry that change over, and everything else in the
+1. **The source document(s) as it was**
+2. **What changed in the source(s) since the target last looked**, as a diff,
+   so the translator's job is to carry that change over, and everything else in the
    target is left alone.
+3. **The target as it is now**, so the terms and voice already in use there
+   are kept, and localized passages stay localized.
 
 Given that, a Spanish page can be structured differently from the English
 one and still receive the English edits. And once "what changed since you
@@ -32,12 +35,14 @@ last looked" is the unit of work, there is no reason for one language to be
 special. Every language can be edited, every edit can propagate, and the
 same machinery runs in every direction.
 
+It's important to note that it's up to the LLM to reason and generate minimal edits, all Obelum does is give it the best possible conditions.
+
 ## The concept
 
 **Each language remembers what it last saw of the others.** For every
-language, Obelum keeps a copy of every language's file as it stood the last
-time that language synced. That is the whole state. There is no counter, no
-timestamp, no history to walk.
+language, Obelum keeps a copy of every language's file as it was the last
+time that language synced. That is the whole state. It's remininescent of vector clocks, but we store the entire copy instead of a counter. 
+Thanks to Git, this part can be done without causing n^2 storage. 
 
 **A language is stale when a sibling's file no longer matches its copy of
 it.** Staleness is a file comparison, per pair of languages, and nothing
