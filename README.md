@@ -36,8 +36,10 @@ same machinery runs in every direction.
 
 **Each language remembers what it last saw of the others.** For every
 language, Obelum keeps a copy of every language's file as it stood the last
-time that language synced. That is the whole state. There is no counter, no
-timestamp, no history to walk.
+time that language synced. That is the whole state. It is reminiscent of a
+vector clock, except each entry is the whole copy instead of a counter, so
+comparing entries yields not just that something changed but what. Thanks
+to git, the copies do not cost n² storage (see [how it is built](#how-it-is-built)).
 
 **A language is stale when a sibling's file no longer matches its copy of
 it.** Staleness is a file comparison, per pair of languages, and nothing
