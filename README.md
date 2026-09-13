@@ -1,7 +1,7 @@
 # Obelum
 
-Obelum is a typescript library to help keep documents in sync between languages, where every language is a
-peer: edit any of them and have changes propagate to the others. 
+Obelum is a typescript library to help keep documents in sync between languages. There is no master/primary 
+language, you can edit any of them and have changes propagate to the others. 
 Also supports keeping language versions structurally different - for localizing marketing for example.
 
 Designed to use git for history and an LLM as the translator, but not locked to it. 
@@ -12,8 +12,8 @@ It is used by [Plinto](https://github.com/maxmart/plinto), a CMS admin for stati
 ## Why
 
 A translated document tends to drift over time. Someone fixes a paragraph in English and the
-Swedish page silently goes out of date, or someone corrects the Swedish wording
-and the next automated translation from English overwrites it.
+Swedish page silently goes out of date, or someone corrects the Swedish wording and the next 
+automated translation from English overwrites it.
 
 The usual tools solve half of this by declaring one language the source and
 regenerating the others from it. That keeps the translations current, but
@@ -42,36 +42,33 @@ It's important to note that it's up to the LLM to reason and generate minimal ed
 **Each language remembers what it last saw of the others.** For every
 language, Obelum keeps a copy of every language's file as it was the last
 time that language synced. That is the whole state. It's remininescent of vector clocks, but we store the entire copy instead of a counter. 
-Thanks to Git, this part can be done without causing n^2 storage. 
+Thanks to Git, this part can be done without causing n^2 storage (see [how it is built](#how-it-is-built))
 
 **A language is stale when a sibling's file no longer matches its copy of
-it.** Staleness is a file comparison, per pair of languages, and nothing
-else. Because it is only ever a comparison of what is in the tree, ordinary
-git work such as merges, squashes, rebases and reverts cannot confuse it.
+it.** Staleness is a file comparison, per pair of languages. Because it 
+is only ever a comparison of what is in the tree, ordinary git work such as 
+merges, squashes, rebases and reverts cannot confuse it.
 
 **The brief is the diff.** To bring a language up to date, Obelum hands a
 translator the target's current content and, for each language that
-changed, the version the target is synced to and a diff to the current one.
-The translator applies the changes. It never sees a whole source it might
-be tempted to re-translate.
+changed, the old version the target is synced to and a diff to the current one.
+The translator applies the changes. 
 
-**A change is either news or not.** Three verbs say which:
+**A change should either propagate or not.** 
+Three verbs:
 
 | verb | meaning |
 |---|---|
-| `edit` | this change should reach the other languages. The only verb that makes anyone stale. |
-| `fix` | this change is local (a typo, a word choice) and must *not* be re-translated. The change is merged three-way into every sibling's copy, so from their point of view it already happened. |
-| `sync` | this language has now incorporated everything the others had for it. Its copies are refreshed and it is no longer stale. |
+| `edit` | this change should propagate to the other languages. The only verb that makes other languages stale. |
+| `fix` | this change is local (a typo, a word choice, restructuring) and should not propagate, but should also not be overwritten. The fix is merged three-way into every sibling's copy, so from their point of view it already happened. |
+| `sync` | this language has now incorporated all changes from other languages. Its copies are refreshed and it is no longer stale. |
 
-A translator's output is saved with `sync`; a person touching up the result
-afterwards uses `edit` or `fix`, depending on whether the touch-up should
-travel. A fix that cannot be merged cleanly into one sibling's copy (the
-fix overlaps an edit that sibling has not seen yet) is left alone there,
-and that sibling sees the whole fix as news. Nothing is lost, only told
-twice.
+The output from the translator is saved with `sync` and then you can touch up the result
+afterwards using `fix`. A fix that cannot be merged cleanly into one sibling's copy (for example if the
+fix overlaps an edit that sibling has not seen yet) is left alone. That language will see the whole fix as part of an edit.
 
 **Think of each language as a branch.** The copies a language keeps are the
-repository as that language knows it. An edit is a commit on the author's
+repository, as that language knows it. An edit is a commit on the author's
 branch; a sync pulls the siblings' current files onto the target's branch
 and rewrites the target; a fix is cherry-picked onto every other branch.
 Real branches would be unbearable to work with, so the "branches" are
@@ -92,11 +89,11 @@ directories in one tree, and git's diff and merge do the rest.
 - **Use any translator.** The brief is plain data: current content, base,
   current, diff, per language. `@obelum/translator-claude` runs it through
   a Claude agent loop with edit tools; a different model, a translation
-  service, or a person at a form could take the same brief.
+  service, or a person could use the same brief.
 - **Run it over a plain git repository.** Every verb is one commit. The
   state lives in the tree, so it survives every git operation the tree
   survives and needs nothing running alongside.
-- **Trust that partial work is never saved.** A translator that could not
+- **No partial translation work is saved.** A translator that could not
   finish returns nothing, and nothing is what gets synced.
 
 ## How it is built
