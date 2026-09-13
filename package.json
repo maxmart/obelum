@@ -8,6 +8,6 @@
   "scripts": {
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build -w @obelum/core -w @obelum/translator-claude -w @obelum/cli --if-present"
   }
 }
