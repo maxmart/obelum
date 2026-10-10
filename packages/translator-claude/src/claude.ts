@@ -46,6 +46,21 @@ export interface ClaudeTranslatorOptions {
    *  plan ahead on cases where the right answer needs understanding, and no
    *  dearer. */
   approach?: Approach;
+  /** Answers the model's question when the documents cannot settle what to
+   *  write: two languages contradict each other, or a change could mean two
+   *  things for the target. A host with a person at hand (a terminal, an
+   *  editor) asks them and resolves with the answer; null means no answer.
+   *  Without it, every question is still a `question` event, for the host
+   *  to log, and the model is told to leave that content as it is. */
+  ask?: (question: Question) => Promise<string | null>;
+}
+
+export interface Question {
+  question: string;
+  /** The choices the model sees, if it saw any. */
+  options: string[];
+  /** What it would do if nobody answered. */
+  guess: string;
 }
 
 export type TranslationEvent =
@@ -53,6 +68,10 @@ export type TranslationEvent =
   | { type: 'reasoning'; text: string }
   | { type: 'edit'; edit: { old_string: string; new_string: string } }
   | { type: 'error'; error: string }
+  /** The model asked something the documents could not settle. `answer` is
+   *  null when nobody answered: the question is then for a person to read
+   *  later, and the content it is about was left as it was. */
+  | ({ type: 'question'; answer: string | null } & Question)
   /** Always last. `complete` is false when the run stopped for any reason
    *  other than finishing cleanly — the result must not be saved then. */
   | { type: 'done'; finalContent: string; complete: boolean };
@@ -125,6 +144,21 @@ const EDIT_FILE_TOOL = {
   },
 };
 
+const ASK_TOOL = {
+  name: 'ask',
+  description:
+    'Ask the person behind this update something the documents cannot settle: two languages say different things about the same fact, or a change could mean two different things for the target. Use it at most once, and only when the answer changes what you write. If no one can answer, the question is recorded for a person to read, and you leave the content it is about as it is.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      question: { type: 'string' as const, description: 'The question, with what it is about quoted from the documents' },
+      options: { type: 'array' as const, items: { type: 'string' as const }, description: 'The choices you see, if any' },
+      guess: { type: 'string' as const, description: 'What you would do if no one answered' },
+    },
+    required: ['question', 'guess'],
+  },
+};
+
 /** A language the target never saw: no base, the whole file is the diff. */
 const unseen = (d: { base: string }) => d.base === '';
 
@@ -174,6 +208,12 @@ function buildSystemPrompt(params: Brief, instructions: string | undefined, styl
   // What is markup and how it is edited: the same whichever job this is.
   const markup = `Markup is not text. Component and attribute names, ids, front matter keys, file paths and URLs stay exactly as they are, except a link whose ${T} pages follow a convention of their own (a language prefix, a translated path): new links in ${T} follow that convention too. Text a reader sees is ${T}, written as a ${T} writer would put it, not word for word.`;
   const done = `When the ${T} file is right, say in a sentence or two what you changed and why. If nothing needs to change, make no edit at all, and say why not.`;
+  // Whoever reads the notes reads them in English; left alone, a model
+  // writing Swedish all day tends to plan and sum up in Swedish too.
+  const notes = `Write your plan, your notes and your summary in English, whatever language the documents are in.`;
+  // The escape hatch: a question instead of a guess, for what only a person
+  // can settle. The bar is high: it must change what is written.
+  const asking = `Some things the documents cannot settle: two languages say different things about the same fact, or a change could mean two different things for ${T}. Then do not guess. Call ask, once, with the question, the options you see, and what you would do if no one answered, and keep the content in question as it is unless you get an answer. Ask only when the answer changes what you write, never about wording or style.`;
   const check = `Each edit's result shows the ${T} file around it as it now reads. Look at it: if anything there is wrong, was missed, or now contradicts something elsewhere in the ${T} file, fix it with further edits.`;
   const tool = `Edit with edit_file: its old_string must appear exactly, once, in the ${T} file.`;
   const editing = {
@@ -196,7 +236,9 @@ ${job}
 
 ${markup}
 
-${params.targetContent.trim() === '' ? `When you are done, say in a sentence or two what you wrote.` : editing}${rulesSection}`;
+${params.targetContent.trim() === '' ? `When you are done, say in a sentence or two what you wrote.` : `${asking}
+
+${editing}`} ${notes}${rulesSection}`;
   }
 
   const changedLangs = langDiffs.map(d => d.lang);
@@ -213,9 +255,11 @@ The versions are not copies of each other. They may differ on purpose: wording, 
 - A change to order or structure applies only where ${T} follows that order or structure.
 - Something that only looks like the changed content, but is about something else, stays as it is.
 
+${asking}
+
 ${markup}
 
-${editing}${rulesSection}`;
+${editing} ${notes}${rulesSection}`;
 }
 
 function buildUserMessage(params: Brief, style: DiffStyle): string {
@@ -296,7 +340,7 @@ export async function* translateWithClaude(
     apiKey: options.apiKey,
     system: buildSystemPrompt(params, options.instructions, options.diffStyle ?? 'hunks', approach),
     userMessage: buildUserMessage(params, options.diffStyle ?? 'hunks'),
-    tools: [EDIT_FILE_TOOL, WRITE_FILE_TOOL],
+    tools: [EDIT_FILE_TOOL, WRITE_FILE_TOOL, ASK_TOOL],
     effort: 'medium',
     maxTurns: 25,
   });
@@ -318,7 +362,21 @@ export async function* translateWithClaude(
         yield { type: 'error', error: ev.error };
         break;
       case 'tool_use':
-        if (ev.name === 'write_file') {
+        if (ev.name === 'ask') {
+          // Neither a success nor a failure: a question changes nothing in
+          // the file. The loop waits for the answer between turns, so a
+          // person can take their time.
+          const question: Question = {
+            question: String(ev.input.question ?? ''),
+            options: Array.isArray(ev.input.options) ? ev.input.options.map(String) : [],
+            guess: String(ev.input.guess ?? ''),
+          };
+          const answer = options.ask ? await options.ask(question) : null;
+          yield { type: 'question', ...question, answer };
+          reply = { content: answer
+            ? `The answer: ${answer}`
+            : 'No one can answer now. Your question is recorded for a person to read. Leave the content it is about as it is, make the rest of the edits, and name the open question in your summary.' };
+        } else if (ev.name === 'write_file') {
           if (typeof ev.input.content !== 'string') {
             attempted.failed(ev.turn);
             reply = { content: 'write_file needs a `content` string.', isError: true };
@@ -355,7 +413,7 @@ export async function* translateWithClaude(
           // An unknown tool was still an attempted change; treat it as a
           // failure that a later informed action must answer.
           attempted.failed(ev.turn);
-          reply = { content: `Unknown tool: ${ev.name}. Use edit_file or write_file.`, isError: true };
+          reply = { content: `Unknown tool: ${ev.name}. Use edit_file, write_file or ask.`, isError: true };
         }
         break;
       case 'stop':

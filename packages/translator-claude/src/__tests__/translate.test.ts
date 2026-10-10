@@ -113,6 +113,45 @@ describe('claude translator', () => {
     expect(replies[0]).toBe('Edit applied successfully.');
   });
 
+  it('passes a question to the host\'s ask and the answer back to the model, and logs it either way', async () => {
+    const replies: (string | undefined)[] = [];
+    const recording: DriveFn = async function* (opts) {
+      captured = opts;
+      for (const ev of script(opts)) replies.push((yield ev)?.content);
+    };
+    script = () => [
+      { type: 'tool_use', id: '1', name: 'ask', input: { question: 'en says 250, de says 300: which?', options: ['250', '300'], guess: 'keep 200' }, turn: 0 },
+      { type: 'stop', reason: 'end_turn' },
+    ];
+    const { session } = document({ en: 'Fee 200\n', sv: 'Avgift 200\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Fee 250\n');
+    const brief = await session.brief('sv');
+
+    const asked: string[] = [];
+    const events: TranslationEvent[] = [];
+    const answered = claude({ apiKey: 'k', drive: recording, ask: async q => { asked.push(q.question); return '250'; } });
+    expect(await answered.run(brief, { onEvent: e => events.push(e) })).toBe('Avgift 200\n');   // a question is no failure
+    expect(asked).toEqual(['en says 250, de says 300: which?']);
+    expect(replies[0]).toBe('The answer: 250');
+    expect(events.find(e => e.type === 'question')).toMatchObject({ options: ['250', '300'], guess: 'keep 200', answer: '250' });
+    expect(captured!.system).toContain('Call ask, once');
+    expect(captured!.tools.map(t => t.name)).toContain('ask');
+
+    replies.length = 0; events.length = 0;
+    await claude({ apiKey: 'k', drive: recording }).run(brief, { onEvent: e => events.push(e) });
+    expect(replies[0]).toContain('No one can answer now');
+    expect(events.find(e => e.type === 'question')).toMatchObject({ answer: null });
+  });
+
+  it('asks for notes in English', async () => {
+    const { session } = document({ en: 'Hello\n', sv: 'Hej\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Hello!\n');
+    await translateInto(session, 'sv');
+    expect(captured!.system).toContain('Write your plan, your notes and your summary in English');
+  });
+
   it('does not count an edit that changes nothing as a failure, even when its text is not there', async () => {
     // A model that decided nothing needs to change sometimes still calls
     // edit_file, with a placeholder. That loses nothing; the run is saved.

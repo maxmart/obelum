@@ -22,6 +22,7 @@ export {
   type DriveFn,
   type DiffStyle,
   type Approach,
+  type Question,
 } from './claude.js';
 export {
   driveClaudeAgent,
