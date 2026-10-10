@@ -20,6 +20,8 @@ export {
   type RunOptions,
   type TranslationEvent,
   type DriveFn,
+  type DiffStyle,
+  type Approach,
 } from './claude.js';
 export {
   driveClaudeAgent,

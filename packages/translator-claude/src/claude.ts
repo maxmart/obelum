@@ -11,13 +11,16 @@
  *   const content = await claude({ apiKey }).run(await session.brief('sv'));
  *   if (content) await session.sync('sv', content);
  */
-import type { Brief } from '@obelum/core';
+import { unifiedDiff, type Brief, type LangDiff } from '@obelum/core';
 import { Remediation, CONFIRM_UNCHANGED } from './remediation.js';
 import { driveClaudeAgent, applyTextEdit, type ToolReply } from './claude/stream.js';
 
 /** What talks to the model. The one seam an evaluation replaces: everything
  *  else — prompt building, the tool loop, the remediation rule — runs for real. */
 export type DriveFn = typeof driveClaudeAgent;
+
+export type DiffStyle = 'hunks' | 'inline' | 'diff';
+export type Approach = 'batch' | 'check' | 'plan';
 
 export interface ClaudeTranslatorOptions {
   apiKey: string;
@@ -27,6 +30,22 @@ export interface ClaudeTranslatorOptions {
   /** Stands in for the real model: a recorded transcript, a probe that only
    *  captures the prompts. Defaults to driveClaudeAgent. */
   drive?: DriveFn;
+  /** How a sibling's changes are shown. 'hunks' (the default): the file as
+   *  the target last saw it, then a three-line-context diff. 'inline': the
+   *  whole file once, as a diff with every line in it, so each change sits
+   *  where it happens. 'diff': the three-line-context diff alone, without
+   *  the file around it. The target's own changes are always hunks, since
+   *  its current content is shown in full anyway, and a language the target
+   *  has never seen is always shown whole. */
+  diffStyle?: DiffStyle;
+  /** How the model is asked to work. 'plan' (the default): first write out
+   *  what each change means and every place in the target it concerns, then
+   *  edit, and check each edit against the target around it, which the tool
+   *  shows. 'check': the same without the written plan. 'batch': every edit
+   *  in one response, each answered with a bare "applied". The evals put
+   *  plan ahead on cases where the right answer needs understanding, and no
+   *  dearer. */
+  approach?: Approach;
 }
 
 export type TranslationEvent =
@@ -116,7 +135,27 @@ function fullSyncContents(params: Brief) {
   return others.length && others.every(unseen) ? others : [];
 }
 
-function buildSystemPrompt(params: Brief, instructions: string | undefined): string {
+/** The whole file as one diff, without the hunk header: every line of base
+ *  and content once, marked ' ', '-' or '+'. */
+function inlineDiff(d: LangDiff): string {
+  return unifiedDiff(d.base, d.content, undefined, Infinity).split('\n').slice(1).join('\n');
+}
+
+/** What the brief shows of each changed sibling, as the system prompt says it. */
+const SHOWN: Record<DiffStyle, (target: string) => string> = {
+  hunks: t => `For each language that changed, you have the content from when ${t} was last synced and a diff showing what changed since then.`,
+  inline: t => `For each language that changed, you have its whole file as a diff against the version ${t} was last synced to: a line starting with a space is unchanged, "-" was removed, "+" was added.`,
+  diff: t => `For each language that changed, you have a diff showing what changed since ${t} was last synced: a line starting with a space is unchanged context, "-" was removed, "+" was added. The rest of that file is not shown.`,
+};
+
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
+/** A language code as a name, for prose: sv → Swedish. The code itself when
+ *  the runtime does not know it. */
+function langName(code: string): string {
+  try { return languageNames.of(code) ?? code; } catch { return code; }
+}
+
+function buildSystemPrompt(params: Brief, instructions: string | undefined, style: DiffStyle, approach: Approach = 'plan'): string {
   const { targetLang, langDiffs } = params;
   const fullSync = fullSyncContents(params);
 
@@ -127,51 +166,59 @@ function buildSystemPrompt(params: Brief, instructions: string | undefined): str
     ? `\n\nThe following rules and glossary are binding — follow them even where another translation would read naturally:\n\n${instructions}`
     : '';
 
+  // Languages by name in prose (Swedish, not sv); the code once, since the
+  // user message heads each file with it.
+  const T = langName(targetLang);
+  const named = (l: string) => `${langName(l)} (${l})`;
+
+  // What is markup and how it is edited: the same whichever job this is.
+  const markup = `Markup is not text. Component and attribute names, ids, front matter keys, file paths and URLs stay exactly as they are, except a link whose ${T} pages follow a convention of their own (a language prefix, a translated path): new links in ${T} follow that convention too. Text a reader sees is ${T}, written as a ${T} writer would put it, not word for word.`;
+  const done = `When the ${T} file is right, say in a sentence or two what you changed and why. If nothing needs to change, make no edit at all, and say why not.`;
+  const check = `Each edit's result shows the ${T} file around it as it now reads. Look at it: if anything there is wrong, was missed, or now contradicts something elsewhere in the ${T} file, fix it with further edits.`;
+  const tool = `Edit with edit_file: its old_string must appear exactly, once, in the ${T} file.`;
+  const editing = {
+    batch: `${tool} Make all your edits in one response. ${done}`,
+    check: `${tool} Make the edits you are sure of together, in one response. ${check} ${done}`,
+    plan: `Before you edit, write out briefly: for each change, what it says and why it was likely made; then every place in the ${T} file that it concerns, quoted, with whether that place needs an edit and why. Places the other language never mentions count too.
+
+Then make the edits, together in one response. ${tool} ${check} ${done}`,
+  }[approach];
+
   if (fullSync.length) {
-    // Full sync — no diff base available
-    const otherLangs = fullSync.map(c => c.lang).join(', ');
-    const newFileNote = params.targetContent.trim() === ''
-      ? `\n\nThe ${targetLang} file does not exist yet — it is empty. Create it with a SINGLE write_file call containing the complete translated file.`
-      : '';
-    return `You are syncing the ${targetLang} version of a document to match the other language versions (${otherLangs}).
+    // Nothing to diff against: the target has never been brought up to date.
+    const others = fullSync.map(c => named(c.lang)).join(', ');
+    const job = params.targetContent.trim() === ''
+      ? `The ${T} file does not exist yet. Write it whole, with a single write_file call: the same document as the others, with the same structure (headings at the same levels, the same components and front matter), and everything a reader sees in ${T}, as a ${T} writer would put it: currencies, dates and conventions included.`
+      : `The ${T} file exists, and may differ from the others on purpose: its own wording, order, local details, sections only ${T} has. Make it say what the others say: add what it lacks, each where it fits in ${T}'s own order, and correct what contradicts them. Keep everything ${T} does its own way, its order above all: never rearrange what is there to follow the others. Edit the file where it stands, with edit_file; do not rewrite it with write_file.`;
+    return `You are bringing the ${named(targetLang)} version of a document up to date with its other language versions (${others}). The languages are equal peers; none is the original. ${T} has never been brought up to date with them before, so there is no diff: you have their current content in full.
 
-All languages are equal peers — there is no "primary" language. You have the current content of each language version. Update the ${targetLang} version so it is consistent with the others.${newFileNote}
+${job}
 
-Use the edit_file tool to update the ${targetLang} file. Each edit must use exact string matching — the old_string must appear exactly in the ${targetLang} file. Use write_file instead when creating the file or rewriting nearly all of it.
+${markup}
 
-IMPORTANT: Make ALL your edit_file calls in a SINGLE response. Do not make one edit per turn — batch all edits together.
-
-Guidelines:
-- Translate human-readable text. Do NOT change URLs, file paths, ids, or technical attributes.
-- Preserve ids exactly as they are in the target file.
-- If other versions have sections that ${targetLang} is missing, add them (translated).
-- If ${targetLang} has sections that no other version has, remove them.
-- If text already matches the meaning, leave it as is.
-- Briefly explain what you changed and any decisions, but keep explanations concise.
-- If no changes are needed, say so.${rulesSection}`;
+${params.targetContent.trim() === '' ? `When you are done, say in a sentence or two what you wrote.` : editing}${rulesSection}`;
   }
 
   const changedLangs = langDiffs.map(d => d.lang);
+  const others = changedLangs.filter(l => l !== targetLang);
   const targetChanged = changedLangs.includes(targetLang);
 
-  return `You are updating the ${targetLang} version of a document. Since the last sync, changes were made in: ${changedLangs.join(', ')}.
+  return `You are keeping the ${named(targetLang)} version of a document up to date with its other language versions. The languages are equal peers; none is the original. Since ${T} was last brought up to date, ${others.length ? `someone changed ${others.map(named).join(' and ')}` : `only ${T} itself has changed`}. ${SHOWN[style](T)}${targetChanged ? ` ${T} has been edited itself since then too; those edits are shown as well, and they are deliberate: keep them.` : ''}
 
-All languages are equal peers — there is no "primary" language. For each language that changed, you have the content from when ${targetLang} was last synced and a diff showing what changed since then.${targetChanged ? `\n\nNote: ${targetLang} itself also changed (e.g., a local fix). Preserve those changes while incorporating updates from other languages.` : ''}
+Your job is not to translate the diff. It is to understand each change (what it says, and why it was likely made: a new fact, a correction, a rewording, a removal, a reordering) and then ask: if the person who made it had been editing the ${T} version instead, what would they have changed there? Make those changes.
 
-Use the edit_file tool to apply equivalent changes to the ${targetLang} file. Each edit must use exact string matching — the old_string must appear exactly in the file.
+The versions are not copies of each other. They may differ on purpose: wording, order, examples, local services and links, whole sections that only one language has. Keep all of that, except where a change is about it. It follows that:
+- One change may need several edits in ${T}: everywhere ${T} says what changed, also where the other language never said it, so that ${T} does not contradict itself.
+- A change may need no edit at all: when ${T} does not have the content it is about, or already says what the change says.
+- A change to order or structure applies only where ${T} follows that order or structure.
+- Something that only looks like the changed content, but is about something else, stays as it is.
 
-IMPORTANT: Make ALL your edit_file calls in a SINGLE response. Do not make one edit per turn — batch all edits together.
+${markup}
 
-Guidelines:
-- Translate human-readable text. Do NOT change URLs, file paths, ids, or technical attributes.
-- Preserve ids exactly as they are in the target file.
-- If a change is purely structural/formatting (not content), apply the same structural change.
-- If another language added or removed sections, make equivalent additions/removals.
-${targetChanged ? `- Changes already made to ${targetLang} should be kept — do not revert them.\n` : ''}- Briefly explain what you changed and any decisions, but keep explanations concise.
-- If no changes are needed, say so.${rulesSection}`;
+${editing}${rulesSection}`;
 }
 
-function buildUserMessage(params: Brief): string {
+function buildUserMessage(params: Brief, style: DiffStyle): string {
   const { targetLang, targetContent, langDiffs } = params;
   const fullSync = fullSyncContents(params);
 
@@ -186,7 +233,7 @@ function buildUserMessage(params: Brief): string {
 ## Current ${targetLang} content (this is what you'll edit):
 ${targetContent}
 
-Update the ${targetLang} version to be consistent with the other language versions above.`;
+Bring the ${targetLang} version up to date with the versions above.`;
   }
 
   // Diff mode — show what changed in each language
@@ -198,6 +245,14 @@ ${d.diff}`;
     if (unseen(d)) {
       return `## Current ${d.lang} content (${targetLang} has never been synced to it):
 ${d.content}`;
+    }
+    if (style === 'inline') {
+      return `## ${d.lang} since last sync, the whole file as a diff:
+${inlineDiff(d)}`;
+    }
+    if (style === 'diff') {
+      return `## Changes made to ${d.lang} since ${targetLang} last synced:
+${d.diff}`;
     }
     return `## ${d.lang} content at time of last sync:
 ${d.base}
@@ -211,7 +266,20 @@ ${d.diff}`;
 ## Current ${targetLang} content (this is what you'll edit):
 ${targetContent}
 
-Apply the equivalent changes to the ${targetLang} file.`;
+Update the ${targetLang} file.`;
+}
+
+/** The edited stretch of the file as it now reads, three lines either side,
+ *  numbered: what the model gets back to check its edit against. */
+function around(before: string, after: string, oldStr: string, newStr: string, context = 3): string {
+  const lf = (s: string) => s.replace(/\r\n/g, '\n');
+  const at = lf(before).indexOf(lf(oldStr));
+  const start = at < 0 ? 0 : lf(before).slice(0, at).split('\n').length - 1;
+  const span = lf(newStr).split('\n').length;
+  const lines = lf(after).split('\n');
+  const from = Math.max(0, start - context);
+  const to = Math.min(lines.length, start + span + context);
+  return lines.slice(from, to).map((l, i) => `${from + i + 1}\t${l}`).join('\n');
 }
 
 export async function* translateWithClaude(
@@ -223,10 +291,11 @@ export async function* translateWithClaude(
   // result, and only a success from a later turn answers it.
   const attempted = new Remediation();
 
+  const approach = options.approach ?? 'plan';
   const driver = (options.drive ?? driveClaudeAgent)({
     apiKey: options.apiKey,
-    system: buildSystemPrompt(params, options.instructions),
-    userMessage: buildUserMessage(params),
+    system: buildSystemPrompt(params, options.instructions, options.diffStyle ?? 'hunks', approach),
+    userMessage: buildUserMessage(params, options.diffStyle ?? 'hunks'),
     tools: [EDIT_FILE_TOOL, WRITE_FILE_TOOL],
     effort: 'medium',
     maxTurns: 25,
@@ -263,11 +332,20 @@ export async function* translateWithClaude(
           const old_string = ev.input.old_string as string;
           const new_string = ev.input.new_string as string;
           const result = applyTextEdit(currentContent, old_string, new_string);
-          if (result.ok) {
+          if (!result.ok && typeof old_string === 'string' && old_string === new_string) {
+            // An edit that changes nothing loses nothing when it misses, so it
+            // is no failure. A model that decided nothing needs to change
+            // sometimes still calls edit_file with a placeholder; counting
+            // that as a failed change threw away a correct "nothing to do".
+            // It answers no earlier failure either: only a found text does
+            // (the CONFIRM_UNCHANGED path, through result.ok above).
+            reply = { content: 'That text is not in the file, and this edit would change nothing anyway. If nothing needs to change, make no edit at all.' };
+          } else if (result.ok) {
+            const before = currentContent;
             currentContent = result.content;
             attempted.succeeded(ev.turn);
             yield { type: 'edit', edit: { old_string, new_string } };
-            reply = { content: 'Edit applied successfully.' };
+            reply = { content: approach === 'batch' ? 'Edit applied successfully.' : `Edit applied. Around it, the file now reads:\n${around(before, currentContent, old_string, new_string)}` };
           } else {
             attempted.failed(ev.turn);
             yield { type: 'error', error: `Edit failed: ${result.error}` };

@@ -44,9 +44,13 @@ export interface ClaudeAgentOptions {
   maxTurns: number;
   /** Adaptive thinking at this effort; omit for the model's default. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Defaults to MODEL. An evaluation compares others through `drive`. */
+  model?: string;
+  /** Each turn's token counts, for whoever measures what a run costs. */
+  onUsage?: (usage: Anthropic.Usage) => void;
 }
 
-const MODEL = 'claude-sonnet-5';
+const MODEL = 'claude-sonnet-5-5';
 const MAX_TOKENS = 16000;
 
 export async function* driveClaudeAgent(
@@ -78,7 +82,7 @@ export async function* driveClaudeAgent(
     let message: Anthropic.Message;
     try {
       const stream = client.messages.stream({
-        model: MODEL,
+        model: opts.model ?? MODEL,
         max_tokens: MAX_TOKENS,
         ...(opts.effort
           ? {
@@ -110,6 +114,7 @@ export async function* driveClaudeAgent(
       }
       message = await stream.finalMessage();
       live = null;
+      opts.onUsage?.(message.usage);
     } catch (err) {
       yield { type: 'error', error: `Claude API error: ${claudeErrorMessage(err)}` };
       yield { type: 'stop', reason: 'error' };

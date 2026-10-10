@@ -64,18 +64,75 @@ describe('claude translator', () => {
     await session.markAsSynced('sv');
     await session.edit('en', '<p id="a">Hello there</p>');
     await translateInto(session, 'sv');
-    expect(captured!.system).toContain('changes were made in: en');
+    expect(captured!.system).toContain('someone changed English (en)');
     expect(captured!.userMessage).toContain('en content at time of last sync:\n<p id="a">Hello</p>');
     expect(captured!.userMessage).toContain('+<p id="a">Hello there</p>');
   });
 
-  it('tells the model to keep the target\'s own local changes', async () => {
+  it('shows the whole file once, as a diff, in the inline style', async () => {
+    const { session } = document({ en: 'Intro\nHello\nOutro\n', sv: 'Intro\nHej\nOutro\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Intro\nHello there\nOutro\n');
+    await claude({ apiKey: 'k', drive, diffStyle: 'inline' }).run(await session.brief('sv'));
+    expect(captured!.system).toContain('"+" was added');
+    expect(captured!.userMessage).toContain('## en since last sync, the whole file as a diff:\n Intro\n-Hello\n+Hello there\n Outro\n\n');
+    expect(captured!.userMessage).not.toContain('at time of last sync');
+  });
+
+  it('shows the diff alone, without the source file, in the diff style', async () => {
+    const { session } = document({ en: 'Intro\nHello\nOutro\n', sv: 'Intro\nHej\nOutro\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Intro\nHello there\nOutro\n');
+    await claude({ apiKey: 'k', drive, diffStyle: 'diff' }).run(await session.brief('sv'));
+    expect(captured!.system).toContain('The rest of that file is not shown');
+    expect(captured!.userMessage).toContain('## Changes made to en since sv last synced:\n@@ -1,3 +1,3 @@');
+    expect(captured!.userMessage).not.toContain('at time of last sync');
+  });
+
+  it('answers an edit with the lines around it in the check approach, and only "applied" in batch', async () => {
+    const replies: (string | undefined)[] = [];
+    const recording: DriveFn = async function* (opts) {
+      captured = opts;
+      for (const ev of script(opts)) replies.push((yield ev)?.content);
+    };
+    script = () => [
+      { type: 'tool_use', id: '1', name: 'edit_file', input: { old_string: 'Hej', new_string: 'Hej där' }, turn: 0 },
+      { type: 'stop', reason: 'end_turn' },
+    ];
+    const { session } = document({ en: 'A\nB\nHello\nC\n', sv: 'A\nB\nHej\nC\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'A\nB\nHello there\nC\n');
+    const brief = await session.brief('sv');
+
+    await claude({ apiKey: 'k', drive: recording, approach: 'check' }).run(brief);
+    expect(captured!.system).toContain('Each edit\'s result shows the Swedish file around it');
+    expect(replies[0]).toBe('Edit applied. Around it, the file now reads:\n1\tA\n2\tB\n3\tHej där\n4\tC\n5\t');
+
+    replies.length = 0;
+    await claude({ apiKey: 'k', drive: recording, approach: 'batch' }).run(brief);
+    expect(replies[0]).toBe('Edit applied successfully.');
+  });
+
+  it('does not count an edit that changes nothing as a failure, even when its text is not there', async () => {
+    // A model that decided nothing needs to change sometimes still calls
+    // edit_file, with a placeholder. That loses nothing; the run is saved.
+    const { session } = document({ en: 'Hello\n', sv: 'Hej\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Hello!\n');
+    script = () => [
+      { type: 'tool_use', id: '1', name: 'edit_file', input: { old_string: 'placeholder_no_change', new_string: 'placeholder_no_change' }, turn: 0 },
+      { type: 'stop', reason: 'end_turn' },
+    ];
+    expect(await translator.run(await session.brief('sv'))).toBe('Hej\n');
+  });
+
+  it('tells the model to keep the target\'s own local edits', async () => {
     const { session } = document({ en: 'Hello\nBye', sv: 'Hej\nHejdå' });
     await session.markAsSynced('sv');
-    await session.fix('sv', 'Hej\nHej då');
+    await session.edit('sv', 'Hej\nHejdå\nVälkommen');
     await session.edit('en', 'Hello!\nBye');
     await translateInto(session, 'sv');
-    expect(captured!.system).toContain('sv itself also changed');
+    expect(captured!.system).toContain('Swedish has been edited itself since then too');
     expect(captured!.userMessage).toContain('Changes made to sv (the file you\'re editing) since last sync');
   });
 
