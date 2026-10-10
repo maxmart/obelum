@@ -27,17 +27,39 @@ export interface Config {
 
 export const CONFIG_FILE = 'obelum.json';
 
-export function loadConfig(root: string): Config {
+/** The config at the repository root. `cwd` is only for a better error: a
+ *  config in the current directory below the root is never read. */
+export function loadConfig(root: string, cwd?: string): Config {
   const file = path.join(root, CONFIG_FILE);
-  if (!fs.existsSync(file)) throw new Error(`No ${CONFIG_FILE} in ${root}. Run \`obelum init\` first.`);
+  if (!fs.existsSync(file)) {
+    const here = cwd && path.join(path.resolve(cwd), CONFIG_FILE);
+    if (here && here !== file && fs.existsSync(here)) {
+      throw new Error(`No ${CONFIG_FILE} in ${root}, the repository root. The one in ${path.resolve(cwd!)} is not read: ` +
+        `obelum reads its config from the root. Move it there, or make ${path.resolve(cwd!)} a repository of its own with git init.`);
+    }
+    throw new Error(`No ${CONFIG_FILE} in ${root}. Run \`obelum init\` first.`);
+  }
   const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Config>;
   if (!Array.isArray(raw.langs) || raw.langs.length < 2) throw new Error(`${CONFIG_FILE}: "langs" must list at least two languages`);
   if (!Array.isArray(raw.documents) || raw.documents.length === 0) throw new Error(`${CONFIG_FILE}: "documents" must list at least one pattern`);
   for (const p of raw.documents) {
-    if (typeof p !== 'string' || p.split('{lang}').length !== 2) throw new Error(`${CONFIG_FILE}: pattern "${p}" must contain {lang} exactly once`);
-    if (p.startsWith('/') || p.includes('..')) throw new Error(`${CONFIG_FILE}: pattern "${p}" must be a repository-relative path`);
+    const problem = patternProblem(p);
+    if (problem) throw new Error(`${CONFIG_FILE}: ${problem}`);
   }
   return { langs: raw.langs, documents: raw.documents, anchor: raw.anchor, instructions: raw.instructions };
+}
+
+/** What is wrong with a document pattern, or null. */
+export function patternProblem(p: unknown): string | null {
+  if (typeof p !== 'string' || p.split('{lang}').length !== 2) return `pattern "${p}" must contain {lang} exactly once`;
+  if (p.startsWith('/') || /^[A-Za-z]:/.test(p) || p.includes('..')) return `pattern "${p}" must be a path relative to the repository root`;
+  return null;
+}
+
+/** The files among `paths` that one pattern matches. */
+export function matching(pattern: string, langs: string[], paths: Iterable<string>): string[] {
+  const re = patternRegex(pattern, langs);
+  return [...paths].filter(p => !p.startsWith('.obelum/') && re.test(p));
 }
 
 export const ANCHORS = {

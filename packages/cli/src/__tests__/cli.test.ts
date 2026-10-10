@@ -20,10 +20,12 @@ const at = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 const head = (rel: string) => execFileSync('git', ['show', `HEAD:${rel}`], { cwd: root, encoding: 'utf8' });
 
 interface Result { code: number; out: string; err: string }
-async function obelum(...argv: string[]): Promise<Result> {
+const obelum = (...argv: string[]) => obelumIn('', ...argv);
+/** The command run from a directory below the root. */
+async function obelumIn(dir: string, ...argv: string[]): Promise<Result> {
   const out: string[] = [], err: string[] = [];
   const io: Io = {
-    cwd: root,
+    cwd: path.join(root, dir),
     stdout: l => out.push(l),
     stderr: l => err.push(l),
     stdin: async () => stdinText,
@@ -75,6 +77,43 @@ describe('init and mark --all', () => {
   });
 });
 
+describe('init, told plainly what went wrong', () => {
+  beforeEach(() => { fs.rmSync(path.join(root, 'obelum.json')); });
+
+  it('takes languages split into separate arguments, as PowerShell passes an unquoted --langs sv,no', async () => {
+    const r = await obelum('init', '--langs', 'sv', 'no', 'en', 'src/pages/{lang}/**/*.mdx');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(at('obelum.json'))).toEqual({ langs: ['sv', 'no', 'en'], documents: ['src/pages/{lang}/**/*.mdx'] });
+    expect(r.out).toContain(`wrote ${path.join(root, 'obelum.json')}`);
+    expect(r.out).toContain('src/pages/{lang}/**/*.mdx: 3 files');
+  });
+
+  it('names what is missing: a second language, a pattern, {lang} in a pattern', async () => {
+    expect((await obelum('init', '--langs', 'sv', 'src/pages/{lang}/*.mdx')).err).toContain('at least two languages; got only "sv"');
+    expect((await obelum('init', '--langs', 'sv,no')).err).toContain('no document pattern');
+    expect((await obelum('init', '--langs', 'sv,no', 'src/pages/*.mdx')).err).toContain('"src/pages/*.mdx" has no {lang} in it');
+    expect(fs.existsSync(path.join(root, 'obelum.json'))).toBe(false);
+  });
+
+  it('run from below the root, refuses a pattern that only matches from where the user stands, and says why', async () => {
+    const r = await obelumIn('src', 'init', '--langs', 'sv,no,en', 'pages/{lang}/*.mdx');
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('matched from the repository root');
+    expect(r.err).toContain(`'src/pages/{lang}/*.mdx'`);
+    expect(r.err).toContain('Nothing was written');
+    expect(fs.existsSync(path.join(root, 'obelum.json'))).toBe(false);
+
+    const ok = await obelumIn('src', 'init', '--langs', 'sv,no,en', 'src/pages/{lang}/*.mdx');
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain('at the repository root, not in src');
+  });
+
+  it('says a config below the root is not read', async () => {
+    write('src/obelum.json', '{}');
+    expect((await obelumIn('src', 'status')).err).toContain('is not read: obelum reads its config from the root');
+  });
+});
+
 describe('the verbs', () => {
   beforeEach(async () => { await obelum('mark', '--all'); });
 
@@ -110,7 +149,7 @@ describe('the verbs', () => {
 
     write('src/pages/no/pricing.mdx', page('no', ...ABC, 'Vipps is fine'));
     const f = await obelum('fix', 'src/pages/no/pricing.mdx');
-    expect(f.out).toBe('fix src/pages/no/pricing.mdx: committed; merged into sv; left alone for en (they will see it as news)');
+    expect(f.out).toBe('fix src/pages/no/pricing.mdx: committed; merged into sv; left alone for en (it will be in their next diff)');
     expect(head('.obelum/sv/src/pages/no/pricing.mdx')).toBe(page('no', ...ABC, 'Vipps is fine'));
     expect((await obelum('status')).out).not.toContain('sv: stale');
   });
@@ -124,8 +163,39 @@ describe('the verbs', () => {
     expect((await obelum('status')).out).toContain('en: stale (no)');
   });
 
+  it('status names a change not taken in yet, and the choice it needs', async () => {
+    write('src/pages/no/pricing.mdx', page('no', ...ABC, 'Vipps'));
+    write('src/pages/sv/about.mdx', page('sv', 'om oss'));
+    const s = await obelum('status');
+    expect(s.out).toContain('src/pages/no/pricing.mdx has changes, not taken in yet:');
+    expect(s.out).toMatch(/obelum edit src\/pages\/no\/pricing\.mdx +if they are new content \(sv, en will need them\)/);
+    expect(s.out).toMatch(/obelum fix src\/pages\/no\/pricing\.mdx +if they correct the translation \(nobody will\)/);
+    expect(s.out).toContain('src/pages/sv/about.mdx is new, not taken in yet:');
+    expect(s.out).toMatch(/obelum sync src\/pages\/sv\/about\.mdx +if it translates/);
+    expect(s.out).toContain('3 documents, 0 with a language behind, 2 with changes not taken in yet');
+    expect(JSON.parse((await obelum('status', '--json')).out).map((r: { pending: string[] }) => r.pending)).toEqual([['sv'], ['no']]);   // about, then pricing
+
+    // From a subdirectory the commands are written as they would be typed there.
+    expect((await obelumIn('src/pages', 'status')).out).toContain('obelum edit no/pricing.mdx');
+    await obelum('edit', 'src/pages/no/pricing.mdx');
+    expect((await obelum('status')).out).not.toContain('src/pages/no/pricing.mdx has changes');
+  });
+
+  it('fix and sync say so when there was nothing to commit', async () => {
+    expect((await obelum('fix', 'src/pages/sv/pricing.mdx')).out).toBe('src/pages/sv/pricing.mdx: no change against HEAD; nothing to fix');
+    expect((await obelum('sync', 'src/pages/sv/pricing.mdx')).out).toBe('src/pages/sv/pricing.mdx: already synced as it stands; nothing to commit');
+  });
+
+  it('mark says so when there was nothing to mark', async () => {
+    expect((await obelum('mark', '--all')).out).toContain('already marked as synced; nothing to commit');
+    expect((await obelum('mark', 'src/pages/sv/pricing.mdx')).out).toBe('src/pages/sv/pricing.mdx was already marked as synced; nothing to commit');
+  });
+
   it('refuses a path outside the patterns and a missing config', async () => {
     expect((await obelum('brief', 'README.md')).err).toContain('matches no document pattern');
+    expect((await obelum('mark', '-all')).err).toContain('looks like a flag; flags take two dashes: --all');
+    expect((await obelumIn('src', 'brief', 'pages/sv/pricing.mdx')).err).not.toContain('matches no');
+    expect((await obelumIn('src', 'brief', 'sv/pricing.mdx')).err).toContain('Patterns are matched from the repository root');
     fs.rmSync(path.join(root, 'obelum.json'));
     expect((await obelum('status')).err).toContain('No obelum.json');
   });

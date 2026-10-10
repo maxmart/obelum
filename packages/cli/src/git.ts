@@ -28,7 +28,7 @@ export class Git {
   static open(dir = process.cwd()): Git {
     let root: string;
     try {
-      root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' }).trim();
+      root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
     } catch {
       throw new Error(`${dir} is not inside a git repository`);
     }
@@ -42,7 +42,9 @@ export class Git {
     this.tree = new Map();
     let out: string;
     try {
-      out = execFileSync('git', ['ls-tree', '-r', '-z', 'HEAD'], { cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      // stderr piped: in a repository with no commits yet, git's "fatal:
+      // Not a valid object name HEAD" is the expected answer, not an error.
+      out = execFileSync('git', ['ls-tree', '-r', '-z', 'HEAD'], { cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch {
       return; // no commits yet
     }
@@ -117,6 +119,39 @@ export class Git {
     return next;
   }
 
+  /** Every file in the working directory git would consider: tracked, plus
+   *  untracked that are not ignored. For telling a pattern that matches
+   *  nothing apart from files that are only not committed yet. */
+  workingPaths(): string[] {
+    try {
+      return execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+        .split('\0').filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Paths whose working-directory state differs from HEAD in any way:
+   *  modified, staged, or untracked. A candidate list; the caller compares
+   *  contents, since line endings alone can make git call a file modified. */
+  changedPaths(): string[] {
+    let out: string;
+    try {
+      out = execFileSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch {
+      return [];
+    }
+    const paths: string[] = [];
+    const entries = out.split('\0');
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (e.length < 4) continue;
+      paths.push(e.slice(3));
+      if (e[0] === 'R' || e[0] === 'C') i++; // the next entry is the rename's source
+    }
+    return paths;
+  }
+
   /** The working-directory content, or null. Used to take a hand edit in. */
   readWorking(p: string): string | null {
     const full = path.join(this.root, p);
@@ -146,7 +181,7 @@ export class Git {
     const tmp = path.join(this.root, '.git', `obelum-index-${process.pid}`);
     const env = { ...process.env, GIT_INDEX_FILE: tmp };
     try {
-      const head = this.headOid();
+      const head = this.head();
       if (head) execFileSync('git', ['read-tree', 'HEAD'], { cwd: this.root, env, stdio: 'pipe' });
       else execFileSync('git', ['read-tree', '--empty'], { cwd: this.root, env, stdio: 'pipe' });
       for (const [p, oid] of oids) {
@@ -173,7 +208,8 @@ export class Git {
     this.refresh();
   }
 
-  private headOid(): string | null {
+  /** HEAD's commit id, or null before the first commit. */
+  head(): string | null {
     try {
       return execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: this.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
     } catch {
@@ -186,7 +222,7 @@ export class Git {
   private copiesCheckedOut(): boolean {
     let flags: string;
     try {
-      flags = execFileSync('git', ['ls-files', '-t', '--', '.obelum'], { cwd: this.root, encoding: 'utf8' });
+      flags = execFileSync('git', ['ls-files', '-t', '--', '.obelum'], { cwd: this.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     } catch {
       flags = '';
     }
@@ -203,7 +239,7 @@ export class Git {
   merges(limit: number): { hash: string; parents: string[] }[] {
     let out: string;
     try {
-      out = execFileSync('git', ['log', '--merges', `-n${limit}`, '--format=%H %P'], { cwd: this.root, encoding: 'utf8' });
+      out = execFileSync('git', ['log', '--merges', `-n${limit}`, '--format=%H %P'], { cwd: this.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     } catch {
       return [];
     }
@@ -216,7 +252,7 @@ export class Git {
   /** A path's blob id in another commit, or undefined. */
   oidAt(commit: string, p: string): string | undefined {
     try {
-      const out = execFileSync('git', ['ls-tree', commit, '--', p], { cwd: this.root, encoding: 'utf8' }).trim();
+      const out = execFileSync('git', ['ls-tree', commit, '--', p], { cwd: this.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       return out ? out.split('\t')[0].split(' ')[2] : undefined;
     } catch {
       return undefined;
