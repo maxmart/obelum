@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "export": "vite-node src/export.ts --",
     "publish-results": "vite-node src/publish.ts --",
-    "report": "vite-node src/report.ts --"
+    "report": "vite-node src/report.ts --",
+    "site": "vite-node src/site.ts --"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

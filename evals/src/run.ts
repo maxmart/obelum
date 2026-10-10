@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
+import type { Brief } from '@obelum/core';
 import { createPatch } from 'diff';
 import { claude, driveClaudeAgent, type Approach, type DiffStyle, type DriveFn, type ToolReply, type TranslationEvent } from '@obelum/translator-claude';
 import { sourceOf, stage, type Case, type FixMode, type Mode } from './case.js';
@@ -36,7 +37,20 @@ import { judge, judgeUsage, type Verdict } from './judge.js';
 import { request, runClaudeCode } from './claude-code.js';
 import { dollars, TRANSLATOR_DEFAULT, TRANSLATOR_EFFORT } from './prices.js';
 
-type Style = DiffStyle | 'cc';
+type Style = DiffStyle | 'nodiff' | 'cc';
+
+/**
+ * The baseline's brief: the current page of every other language, changed
+ * or not, and no diff or earlier version. The translator gets it with
+ * diffStyle 'none'. Everything else about the run is the same.
+ */
+function currentPages(brief: Brief, store: Map<string, string>, c: Case): Brief {
+  const langDiffs = c.langs
+    .filter(l => l !== c.target && store.has(l))
+    .map(l => ({ lang: l, base: store.get(l)!, content: store.get(l)!, diff: '' }));
+  return { targetLang: brief.targetLang, ...(brief.source ? { source: brief.source } : {}), targetContent: brief.targetContent, langDiffs };
+}
+const diffStyleOf = (s: Style): DiffStyle => (s === 'nodiff' ? 'none' : (s as DiffStyle));
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
@@ -64,7 +78,7 @@ const { values: args } = parseArgs({
 // A style is one of the translator's diff styles, or `cc` / `cc:<model>`:
 // Claude Code itself (claude -p), asked in plain words; see claude-code.ts.
 const styles = args.style.split(',').map(s => s.trim());
-for (const s of styles) if (!['hunks', 'inline', 'diff'].includes(s) && !/^cc(:.+)?$/.test(s)) throw new Error(`unknown style: ${s}`);
+for (const s of styles) if (!['hunks', 'inline', 'diff', 'nodiff'].includes(s) && !/^cc(:.+)?$/.test(s)) throw new Error(`unknown style: ${s}`);
 const fixModes = args.fix.split(',').map(s => s.trim()) as FixMode[];
 for (const f of fixModes) if (f !== 'merged' && f !== 'kept') throw new Error(`unknown fix mode: ${f}`);
 const approaches = args.approach.split(',').map(s => s.trim()) as Approach[];
@@ -95,7 +109,7 @@ if (!cases.length) { console.error('No case matches.'); process.exit(1); }
 if (args.dry) {
   for (const c of cases) for (const v of variants) {
     if (!applies(c, v)) continue;
-    const { session } = await stage(c, v.fix, v.mode);
+    const { session, store } = await stage(c, v.fix, v.mode);
     if (v.style === 'cc') {
       console.log(`\n━━ ${c.id} (${v.label}) ━━\n${request(c, await session.brief(c.target))}`);
       continue;
@@ -104,7 +118,8 @@ if (args.dry) {
       console.log(`\n━━ ${c.id} (${v.label}) ━━\n${opts.system}\n\n── user ──\n${opts.userMessage}`);
       yield { type: 'stop', reason: 'end_turn' };
     };
-    await claude({ apiKey: 'dry', instructions: c.instructions, diffStyle: v.style, approach: v.approach, drive: probe }).run(await session.brief(c.target));
+    const b = await session.brief(c.target);
+    await claude({ apiKey: 'dry', instructions: c.instructions, diffStyle: diffStyleOf(v.style), approach: v.approach, drive: probe }).run(v.style === 'nodiff' ? currentPages(b, store, c) : b);
   }
   process.exit(0);
 }
@@ -125,6 +140,7 @@ interface RunResult {
   style: Style;
   fix: FixMode;
   mode: Mode;
+  approach: Approach;
   rep: number;
   complete: boolean;
   /** Every check passed on a complete result. The judge is reported apart. */
@@ -173,7 +189,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
     const r = await runClaudeCode(c, brief, store, { model: v.ccModel, effort: args.effort, mode: args['cc-mode'], bash: args['cc-bash'] });
     const { checks, verdict } = await score(c, brief, r.output);
     return {
-      case: c.id, variant: v.label, style, fix: v.fix, mode: v.mode, rep, complete: r.complete,
+      case: c.id, variant: v.label, style, fix: v.fix, mode: v.mode, approach: v.approach, rep, complete: r.complete,
       pass: r.complete && checks.every(ch => ch.ok),
       checks, judge: verdict,
       edits: 0, editFailures: 0,
@@ -212,11 +228,11 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
       }
     })();
   };
-  const translator = claude({ apiKey: apiKey!, instructions: c.instructions, diffStyle: style, approach: v.approach, drive });
+  const translator = claude({ apiKey: apiKey!, instructions: c.instructions, diffStyle: diffStyleOf(style), approach: v.approach, drive });
 
   const started = Date.now();
   const events: TranslationEvent[] = [];
-  for await (const e of translator.translate(brief)) events.push(e);
+  for await (const e of translator.translate(style === 'nodiff' ? currentPages(brief, store, c) : brief)) events.push(e);
   const done = events.find(e => e.type === 'done');
   const output = done?.type === 'done' ? done.finalContent : brief.targetContent;
   const complete = done?.type === 'done' && done.complete;
@@ -225,7 +241,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
   const { checks, verdict } = await score(c, brief, output, questions.map(q => [q.question, ...q.options].join(' ')));
   const errors = events.flatMap(e => (e.type === 'error' ? [e.error] : []));
   return {
-    case: c.id, variant: v.label, style, fix: v.fix, mode: v.mode, rep, complete,
+    case: c.id, variant: v.label, style, fix: v.fix, mode: v.mode, approach: v.approach, rep, complete,
     pass: complete && checks.every(ch => ch.ok),
     checks, judge: verdict,
     edits: events.filter(e => e.type === 'edit').length,

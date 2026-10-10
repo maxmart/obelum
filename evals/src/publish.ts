@@ -20,6 +20,8 @@ import { dollars, TRANSLATOR_DEFAULT, TRANSLATOR_EFFORT } from './prices.js';
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export interface PublishedRun {
+  /** Which variant (column) the run belongs to; see Published.variants. */
+  variant?: string;
   rep: number;
   pass: boolean;
   complete: boolean;
@@ -54,8 +56,17 @@ export interface PublishedCase {
   runs: PublishedRun[];
 }
 
+/** One column: how the translator was run. 'nodiff' is the baseline,
+ *  which gets the current pages only. */
+export interface PublishedVariant {
+  label: string;
+  style: string;
+  approach: string;
+}
+
 export interface Published {
-  version: 1;
+  /** 1: one variant, described by style and approach. 2: variants. */
+  version: 1 | 2;
   date: string;
   commit: string;
   dirty: boolean;
@@ -67,6 +78,7 @@ export interface Published {
   /** 'peers', or 'single' for single-source mode. */
   mode: string;
   repeat: number;
+  variants?: PublishedVariant[];
   cases: PublishedCase[];
 }
 
@@ -81,8 +93,18 @@ const file = arg
     })();
 
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-const variants = [...new Set(raw.results.map((r: { variant: string }) => r.variant))];
-if (variants.length !== 1) throw new Error(`One variant per published file; this one has ${variants.join(', ')}.`);
+// Variants (columns) in the order the run made them. They may differ in
+// diff style and approach; they must share fix mode and mode, since a
+// case's "what changed" is staged once.
+const variants: PublishedVariant[] = [];
+for (const r of raw.results) {
+  if (variants.some(v => v.label === r.variant)) continue;
+  variants.push({ label: r.variant, style: r.style, approach: r.approach ?? raw.args.approach ?? 'plan' });
+}
+for (const key of ['fix', 'mode'] as const) {
+  const values = new Set(raw.results.map((r: Record<string, unknown>) => r[key] ?? (key === 'mode' ? 'peers' : 'merged')));
+  if (values.size > 1) throw new Error(`The variants of one published file must share ${key}; this one has ${[...values].join(', ')}.`);
+}
 
 const head = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
 if (raw.dirty) console.warn(`warning: the run was made from a tree with uncommitted changes (commit ${raw.commit}).`);
@@ -96,7 +118,7 @@ const mode = (first.mode ?? 'peers') as Mode;
 const date = path.basename(file, '.json').replace(/T(\d\d)-(\d\d)-(\d\d)-(\d+)Z$/, 'T$1:$2:$3.$4Z');
 
 const published: Published = {
-  version: 1,
+  version: 2,
   date,
   commit: raw.commit,
   dirty: raw.dirty,
@@ -107,6 +129,7 @@ const published: Published = {
   fix,
   mode,
   repeat: Number(raw.args.repeat ?? 1),
+  variants,
   cases: [],
 };
 
@@ -129,8 +152,10 @@ for (const c of cases) {
     })),
     expectUnchanged: lf(c.reference) === lf(brief.targetContent),
     runs: runs
-      .sort((a: { rep: number }, b: { rep: number }) => a.rep - b.rep)
+      .sort((a: { variant: string; rep: number }, b: { variant: string; rep: number }) =>
+        variants.findIndex(v => v.label === a.variant) - variants.findIndex(v => v.label === b.variant) || a.rep - b.rep)
       .map((r: any): PublishedRun => ({
+        variant: r.variant,
         rep: r.rep,
         pass: r.pass,
         complete: r.complete,
@@ -151,7 +176,9 @@ for (const c of cases) {
   });
 }
 
-const out = here(`../published/${date.slice(0, 10)}-${model}${mode === 'single' ? '-single' : ''}.json`);
+// Named by date and commit: the site serves each published file at
+// /evals/<commit>/, a URL that does not change when a newer run is published.
+const out = here(`../published/${date.slice(0, 10)}-${raw.commit}${mode === 'single' ? '-single' : ''}.json`);
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, JSON.stringify(published, null, 1) + '\n');
 const runs = published.cases.flatMap(c => c.runs);

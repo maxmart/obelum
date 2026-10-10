@@ -88,11 +88,27 @@ prompt. Failures are published too.
 git status                                  # the run must start from a clean tree
 npm run eval -w evals -- --repeat 3         # every case, three times
 npm run publish-results -w evals            # newest results/ file → published/<date>-<model>.json
-npm run report -w evals                     # published/ → site/, to look at locally
+npm run report -w evals                     # the newest published file → site/, to look at locally
+npm run site -w evals                       # every published file, as deployed
 ```
 
 `publish-results` stages every case again to add what the site shows but a
 results file does not hold, so run it at the commit the run was made at; it
 warns otherwise. Commit the file it writes. On push, the `Evals site`
-workflow builds the site from the newest file in `published/`; it never runs
-the evals, which cost money and need a key.
+workflow builds the site from every file in `published/`: each run at
+`/evals/<commit>/`, an address that does not change when a newer run is
+published, and a list of them at `/evals/`. It never runs the evals, which
+cost money and need a key.
+
+A run with several variants (`--style hunks,nodiff`, say) is published as
+one file and shown side by side, one column per variant.
+
+## The baseline
+
+`--style nodiff` is the same translator, model, effort, tools and glossary,
+given only the current page of each language (every language, changed or
+not): no diff and no earlier version. Its prompt is the diff prompt with
+what depends on the diff rewritten; it asks the translator to bring the
+target up to date with the current pages. It answers whether the diff helps.
+The diff prompt was tuned on these cases and the baseline's was not, which
+favours the diff.

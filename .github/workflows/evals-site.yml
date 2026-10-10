@@ -1,5 +1,6 @@
-# Publishes the eval results as a static site at maxmart.github.io/obelum/evals/.
-# Built from the newest committed file in evals/published/, never by running
+# Publishes the eval results as a static site at maxmart.github.io/obelum/evals/:
+# every committed file in evals/published/ at /evals/<commit>/, an address that
+# does not change, and a list of them at /evals/. Built from those files, never by running
 # the evals: those cost money and need an API key. To publish a new run, run
 # the evals locally from a clean tree, `npm run publish-results -w evals`, and
 # commit the file it writes.
@@ -12,7 +13,8 @@ on:
     branches: [main]
     paths:
       - 'evals/published/**'
-      - 'evals/src/report.ts'
+      - 'evals/src/render.ts'
+      - 'evals/src/site.ts'
       - '.github/workflows/evals-site.yml'
   workflow_dispatch:
 
@@ -35,7 +37,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: npm run report -w evals -- --out _site/evals
+      - run: npm run site -w evals -- --out _site/evals
       # The project site's root, /obelum/, has nothing else yet.
       - run: echo '<!doctype html><meta http-equiv="refresh" content="0; url=evals/">' > _site/index.html
       - uses: actions/upload-pages-artifact@v3
