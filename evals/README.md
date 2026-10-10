@@ -11,6 +11,8 @@ npm run eval -w evals                                          # every case, as 
 npm run eval -w evals -- --case locality --repeat 3            # ids containing "locality", 3 times each
 npm run eval -w evals -- --approach batch,check,plan           # one column per approach
 npm run eval -w evals -- --style hunks,cc:claude-opus-5-5      # the translator beside Claude Code
+npm run eval -w evals -- --style hunks,nodiff                  # beside a baseline with no diff
+npm run eval -w evals -- --mode peers,single                   # peer system beside single source
 npm run eval -w evals -- --judge --verbose                     # a model's verdict, diffs of failures
 npm run eval -w evals -- --case identical --dry                # print the prompts; no key, no call
 npm run export -w evals -- --case two-places --out ../try      # a case as a folder, to try by hand
@@ -20,7 +22,9 @@ Defaults are the translator's own: the `hunks` brief, the `plan` approach,
 and its default model. Other flags: `--concurrency <n>` (4), `--model <id>`
 and `--effort <level>` (override the translator's), `--judge-model <id>`
 (claude-opus-5-5), `--fix merged,kept` (how a fix step treats the fixer's
-own copy), `--cc-mode <mode>` and `--cc-bash` (Claude Code's permission
+own copy), `--mode peers,single` (every language a peer, or the changed
+language as the only source; cases where two languages change have no
+single-source form and are skipped), `--cc-mode <mode>` and `--cc-bash` (Claude Code's permission
 mode and whether it may use Bash). The runner needs Node 22 or later.
 
 Each run prints one line, then a table: per case and style, how many runs
@@ -87,7 +91,7 @@ prompt. Failures are published too.
 ```sh
 git status                                  # the run must start from a clean tree
 npm run eval -w evals -- --repeat 3         # every case, three times
-npm run publish-results -w evals            # newest results/ file → published/<date>-<model>.json
+npm run publish-results -w evals            # newest results/ file → published/<date>-<commit>[-single].json
 npm run report -w evals                     # the newest published file → site/, to look at locally
 npm run site -w evals                       # every published file, as deployed
 ```

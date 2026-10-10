@@ -126,6 +126,7 @@ alone.
 | [`@obelum/translator-claude`](packages/translator-claude) | a translator: turns a brief into prompts and edit tools for Claude, applies the edits, decides whether the run is complete. |
 | [`@obelum/cli`](packages/cli) | the `obelum` command over plain git: status, briefs, the verbs as commits, translation rounds, and an auditor for the copies. |
 | [`obelum`](packages/obelum) | the unscoped name for `@obelum/core`; a re-export. |
+| [`evals/`](evals) | the translator run for real against staged cases, each result checked. Not published as a package; results are at [maxmart.github.io/obelum/evals](https://maxmart.github.io/obelum/evals/). |
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 

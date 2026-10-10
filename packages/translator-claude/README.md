@@ -73,8 +73,10 @@ through `drive`). `approach`: `plan` (the default) writes out each change and
 every place it concerns before editing, and checks each edit against the
 lines around it; `check` skips the plan; `batch` is one shot. `diffStyle`:
 `hunks` (the default) shows each sibling as the target last saw it plus a
-diff; `inline` and `diff` are for comparison. The `evals/` folder of the
-repository measures all of them.
+diff; `inline` and `diff` are for comparison; `none` gives no diff and no
+earlier version, only the current page of each language in the brief, as a
+baseline for what the diff is worth. The `evals/` folder of the repository
+measures all of them.
 
 For evaluations, `claude({ apiKey, drive })` replaces what talks to the model
 with a recorded transcript or a probe; everything else runs for real.

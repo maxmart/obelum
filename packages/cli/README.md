@@ -54,7 +54,7 @@ obelum edit <file>                     commit the working copy of <file> as an e
 obelum fix <file>                      … as a fix, merged into every sibling's copy
 obelum sync <file> [--from <path>|-]   … as a sync; content from a file, stdin, or the working copy
 obelum mark <file> | mark --all        mark one language, or every document, as synced
-obelum translate <file> [--all]        translate <file> from its siblings with Claude
+obelum translate <file> [--all]        translate <file> from its siblings with Claude [--no-ask]
 obelum check [--merges N] [--json]     audit .obelum/
 ```
 
@@ -109,6 +109,14 @@ edit everyone has now translated is marked as synced (its copy of itself
 catches up; see `syncAll` in core). A translation that does not complete is
 not saved and the command exits 1.
 
+When the documents cannot settle what to write (two languages give the same
+fee different amounts, say), the translator asks. In a terminal the question
+is put to you with its options: answer with a number or your own words, and
+the answer goes back to it. Enter alone is no answer. With `--no-ask`, with
+no terminal, or with no answer, the question and the translator's guess are
+printed, the content it is about is left as it was, and the command ends by
+saying how many questions were left unanswered.
+
 ### check
 
 ```
@@ -118,8 +126,9 @@ orphan: .obelum/sv/src/pages/no/old-name.mdx
 1 finding
 ```
 
-Reports copies for a language not in the config, copies of files that no
-longer exist (a rename or delete without its copies), copies with merge
+Reports copies for a language not in the config, copies nothing reads (with
+a `source`, a target's copy of another target, or any copy the source
+keeps), copies of files that no longer exist (a rename or delete without its copies), copies with merge
 conflict markers, and merge commits resolved by picking sides per file, where
 a language's copy of a sibling came from one parent and the real sibling from
 the other, so the language claims a sync it never made. Exits 1 with findings.
