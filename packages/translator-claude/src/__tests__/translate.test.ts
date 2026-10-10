@@ -144,6 +144,18 @@ describe('claude translator', () => {
     expect(events.find(e => e.type === 'question')).toMatchObject({ answer: null });
   });
 
+  it('says who the target is translated from in single-source mode', async () => {
+    const store = new Map<string, string>([['en', 'Hello\n'], ['sv', 'Hej\n']]);
+    const file = (p: string) => ({ read: () => store.get(p) ?? null, write: (c: string) => { store.set(p, c); } });
+    const session = obelum({ langs: ['en', 'sv'], source: 'en', file, synced: v => ({ file: l => file(`.obelum/${v}/${l}`) }), commit: () => {} });
+    await session.markAsSynced('sv');
+    store.set('en', 'Hello there\n');
+    await translator.run(await session.brief('sv'));
+    expect(captured!.system).toContain('You are keeping the Swedish (sv) translation of a document up to date. Its source is English (en): Swedish was translated from it');
+    expect(captured!.system).toContain('has since been corrected and localized by hand');
+    expect(captured!.system).not.toContain('equal peers');
+  });
+
   it('asks for notes in English', async () => {
     const { session } = document({ en: 'Hello\n', sv: 'Hej\n' });
     await session.markAsSynced('sv');

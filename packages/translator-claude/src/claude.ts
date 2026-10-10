@@ -230,7 +230,10 @@ Then make the edits, together in one response. ${tool} ${check} ${done}`,
     const job = params.targetContent.trim() === ''
       ? `The ${T} file does not exist yet. Write it whole, with a single write_file call: the same document as the others, with the same structure (headings at the same levels, the same components and front matter), and everything a reader sees in ${T}, as a ${T} writer would put it: currencies, dates and conventions included.`
       : `The ${T} file exists, and may differ from the others on purpose: its own wording, order, local details, sections only ${T} has. Make it say what the others say: add what it lacks, each where it fits in ${T}'s own order, and correct what contradicts them. Keep everything ${T} does its own way, its order above all: never rearrange what is there to follow the others. Edit the file where it stands, with edit_file; do not rewrite it with write_file.`;
-    return `You are bringing the ${named(targetLang)} version of a document up to date with its other language versions (${others}). The languages are equal peers; none is the original. ${T} has never been brought up to date with them before, so there is no diff: you have their current content in full.
+    const opening = params.source !== undefined
+      ? `You are bringing the ${named(targetLang)} translation of a document up to date. Its source is ${named(params.source)}; ${T} is translated from it. ${T} has never been brought up to date with it before, so there is no diff: you have its current content in full.`
+      : `You are bringing the ${named(targetLang)} version of a document up to date with its other language versions (${others}). The languages are equal peers; none is the original. ${T} has never been brought up to date with them before, so there is no diff: you have their current content in full.`;
+    return `${opening}
 
 ${job}
 
@@ -245,7 +248,13 @@ ${editing}`} ${notes}${rulesSection}`;
   const others = changedLangs.filter(l => l !== targetLang);
   const targetChanged = changedLangs.includes(targetLang);
 
-  return `You are keeping the ${named(targetLang)} version of a document up to date with its other language versions. The languages are equal peers; none is the original. Since ${T} was last brought up to date, ${others.length ? `someone changed ${others.map(named).join(' and ')}` : `only ${T} itself has changed`}. ${SHOWN[style](T)}${targetChanged ? ` ${T} has been edited itself since then too; those edits are shown as well, and they are deliberate: keep them.` : ''}
+  // Single source: who the target is translated from, and that its own
+  // differences are corrections and localizations made by hand.
+  const opening = params.source !== undefined
+    ? `You are keeping the ${named(targetLang)} translation of a document up to date. Its source is ${named(params.source)}: ${T} was translated from it, and has since been corrected and localized by hand. Since ${T} was last brought up to date, someone changed the ${langName(params.source)} page.`
+    : `You are keeping the ${named(targetLang)} version of a document up to date with its other language versions. The languages are equal peers; none is the original. Since ${T} was last brought up to date, ${others.length ? `someone changed ${others.map(named).join(' and ')}` : `only ${T} itself has changed`}.`;
+
+  return `${opening} ${SHOWN[style](T)}${targetChanged ? ` ${T} has been edited itself since then too; those edits are shown as well, and they are deliberate: keep them.` : ''}
 
 Your job is not to translate the diff. It is to understand each change (what it says, and why it was likely made: a new fact, a correction, a rewording, a removal, a reordering) and then ask: if the person who made it had been editing the ${T} version instead, what would they have changed there? Make those changes.
 
