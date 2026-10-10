@@ -24,6 +24,13 @@ export function variantsOf(data: Published): PublishedVariant[] {
 const runsOf = (c: PublishedCase, v: PublishedVariant, data: Published) =>
   c.runs.filter(r => (r.variant ?? variantsOf(data)[0].label) === v.label);
 
+/** The bookkeeping a run used, as a reader of the blog knows it. */
+export const systemOf = (data: Published) => (data.mode === 'single' ? 'single source' : 'peer system');
+const SYSTEM: Record<string, string> = {
+  'single source': 'One language is the source; each other language keeps a copy of it only. A case runs here when one language other than the target changes, and that language is the source; edits to the target itself are plain edits. Cases where two languages change have no single-source form and are left out.',
+  'peer system': 'Every language is a peer: each keeps a copy of every language, itself included, and a change in any of them is translated into the others.',
+};
+
 /** What a variant is, in words, for a column heading's tooltip. */
 const describe = (v: PublishedVariant) =>
   v.style === 'nodiff'
@@ -126,8 +133,9 @@ ${[...byGroup].map(([g, cs]) => `<tr><td>${esc(g)}</td><td class="num">${cs.leng
 
   const index = `
 ${opts.allRuns ? `<p class="back"><a href="${esc(opts.allRuns)}">← all published runs</a></p>` : ''}
-<h1>Obelum translator evals</h1>
-<p class="meta">${esc(data.model)} · effort ${esc(data.effort)} ·${data.mode === 'single' ? ' single source ·' : ''}
+<h1>Obelum translator evals: ${systemOf(data)}</h1>
+<p class="lead">${esc(SYSTEM[systemOf(data)])}</p>
+<p class="meta">${esc(data.model)} · effort ${esc(data.effort)} ·
 commit <a href="https://github.com/maxmart/obelum/tree/${esc(data.commit)}"><code>${esc(data.commit)}</code></a>${data.dirty ? ' (with uncommitted changes)' : ''} ·
 ${esc(data.date.slice(0, 10))} · ${data.cases.length} cases × ${data.repeat} runs${opts.permalink ? ` · <a href="${esc(opts.permalink)}">permanent link</a>` : ''}</p>
 <ul class="total">${totals}</ul>
@@ -224,16 +232,16 @@ export function renderList(items: { dir: string; data: Published }[], out: strin
       const rs = data.cases.flatMap(c => runsOf(c, v, data));
       return `${esc(v.label)} ${rs.filter(r => r.pass).length}/${rs.length}`;
     }).join(' · ');
-    return `<tr><td><a href="${esc(dir)}/">${esc(data.date.slice(0, 10))}</a></td><td><code>${esc(data.commit)}</code></td><td>${esc(data.model)}${data.mode === 'single' ? ', single source' : ''}</td><td>${data.cases.length} × ${data.repeat}</td><td>${vs}</td></tr>`;
+    return `<tr><td><a href="${esc(dir)}/">${esc(data.date.slice(0, 10))}</a></td><td>${systemOf(data)}</td><td><code>${esc(data.commit)}</code></td><td>${esc(data.model)}</td><td>${data.cases.length} × ${data.repeat}</td><td>${vs}</td></tr>`;
   }).join('\n');
   const latest = items[0];
   fs.writeFileSync(path.join(out, 'style.css'), CSS.trim() + '\n');
   fs.writeFileSync(path.join(out, 'index.html'), page('Obelum translator evals', `
 <h1>Obelum translator evals</h1>
-<p class="lead">Every published run, newest first. Each lives at its own address, <code>/evals/&lt;commit&gt;/</code>,
-which does not change when a newer run is published. The newest is
-<a href="${esc(latest.dir)}/">${esc(latest.data.commit)}</a>.</p>
-<table><thead><tr><th>date</th><th>commit</th><th>model</th><th>cases × runs</th><th>passed</th></tr></thead>
+<p class="lead">Every published run, newest first. Each lives at its own address, <code>/evals/&lt;commit&gt;/</code>
+(<code>/evals/&lt;commit&gt;-single/</code> for single source), which does not change when a newer run is published.
+The newest of each: <a href="peers/">peer system</a> · <a href="single/">single source</a>.</p>
+<table><thead><tr><th>date</th><th>system</th><th>commit</th><th>model</th><th>cases × runs</th><th>passed</th></tr></thead>
 <tbody>${rows}</tbody></table>
 `, ''));
 }

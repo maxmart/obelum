@@ -97,8 +97,10 @@ results file does not hold, so run it at the commit the run was made at; it
 warns otherwise. Commit the file it writes. On push, the `Evals site`
 workflow builds the site from every file in `published/`: each run at
 `/evals/<commit>/`, an address that does not change when a newer run is
-published, and a list of them at `/evals/`. It never runs the evals, which
-cost money and need a key.
+published, and a list of them at `/evals/`. A single-source run (`--mode single`)
+is published as its own file, at `/evals/<commit>-single/`, since the two
+systems are written about apart; `/evals/peers/` and `/evals/single/` go to the
+newest of each. It never runs the evals, which cost money and need a key.
 
 A run with several variants (`--style hunks,nodiff`, say) is published as
 one file and shown side by side, one column per variant.
