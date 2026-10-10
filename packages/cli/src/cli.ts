@@ -70,6 +70,7 @@ function parse(argv: string[]): Args {
 const USAGE = `usage: obelum <command> [options]
 
   init --langs a,b,c <pattern>…   write ${CONFIG_FILE}; patterns contain {lang}
+       [--source a]               translate from one language only (single-source mode)
   status [--all] [--json]         which languages are behind, per document
   brief <file> [--json]           what a translator would be told for <file>
   edit <file>                     commit the working copy as an edit
@@ -114,7 +115,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
 
 // ---------------------------------------------------------------------------
 
-const INIT_USAGE = `usage: obelum init --langs sv,no,en 'src/pages/{lang}/**/*.mdx' […]`;
+const INIT_USAGE = `usage: obelum init --langs sv,no,en [--source en] 'src/pages/{lang}/**/*.mdx' […]`;
 
 /** A language tag: en, sv, pt-BR, zh_Hant. */
 const isLang = (s: string) => /^[A-Za-z]{2,3}([-_][A-Za-z0-9]+)*$/.test(s);
@@ -160,7 +161,9 @@ function init(args: Args, io: Io): number {
     }
   }
 
-  const config: Config = { langs, documents: patterns };
+  const source = typeof args.flags.source === 'string' ? args.flags.source : undefined;
+  if (source !== undefined && !langs.includes(source)) return fail(`--source "${source}" is not one of --langs (${langs.join(', ')}).`);
+  const config: Config = { langs, documents: patterns, ...(source ? { source } : {}) };
   if (typeof args.flags.anchor === 'string') config.anchor = args.flags.anchor as Config['anchor'];
   fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
   io.stdout(`wrote ${file}`);
@@ -245,7 +248,18 @@ async function status(h: Host, args: Args, io: Io): Promise<number> {
       const file = fromCwd(h, io, p.real);
       const others = h.config.langs.filter(l => l !== p.lang && !r.langs[l].missing);
       const needs = others.length ? `${others.join(', ')} will need ${p.isNew ? 'it' : 'them'}` : 'no other language exists yet';
-      const choices: [string, string][] = p.isNew
+      const source = h.config.source;
+      const choices: [string, string][] = source !== undefined
+        // Single source: the source's changes are edits or fixes; a target's
+        // change goes nowhere, so committing it is all there is to do.
+        ? p.lang === source
+          ? [[`obelum edit ${file}`, `if ${p.isNew ? 'it is' : 'they are'} new content (${needs})`],
+             [`obelum fix ${file}`, `if ${p.isNew ? 'it' : 'they'} correct the source and need no translation (no target will)`]]
+          : [[`obelum edit ${file}`, `to commit ${p.isNew ? 'it' : 'them'}; a target's changes go nowhere`],
+             ...(p.isNew || r.langs[p.lang].stale.length
+               ? [[`obelum sync ${file}`, `if ${p.isNew ? 'it translates' : 'they translate'} ${source} as it stands`] as [string, string]]
+               : [])]
+        : p.isNew
         ? [[`obelum sync ${file}`, `if it translates the other languages as they stand`],
            [`obelum edit ${file}`, `if it is new content (${needs})`]]
         : [[`obelum edit ${file}`, `if they are new content (${needs})`],
@@ -325,7 +339,7 @@ async function mark(h: Host, args: Args, io: Io): Promise<number> {
       const session = batch.document(key);
       const stale = await session.stale();
       for (const lang of h.config.langs) {
-        if (stale[lang].missing) continue;
+        if (stale[lang].missing || lang === h.config.source) continue;
         await session.markAsSynced(lang);
         n++;
       }

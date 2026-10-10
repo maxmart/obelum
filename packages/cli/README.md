@@ -33,6 +33,13 @@ lines worth adding to `.gitattributes`:
 *.mdx text eol=lf
 ```
 
+For a site translated from one language, add `--source en` to `init`
+(`"source": "en"` in `obelum.json`). Each target then keeps a copy of
+the source only. A change to the source is an edit as soon as it is
+committed, and makes every target stale; `obelum fix` on the source marks
+a correction as not to be translated. A change to a target needs nothing:
+commit it. `status` says which of these applies to a changed file.
+
 `anchor` says which lines a brief's diff names its hunks after: `mdx` (a
 line starting with `<`), `markdown` (a heading), or `git` (the default, a
 line starting with a letter). `instructions` may name a file whose contents

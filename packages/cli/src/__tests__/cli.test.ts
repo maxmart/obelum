@@ -116,6 +116,62 @@ describe('init, told plainly what went wrong', () => {
   });
 });
 
+describe('single source', () => {
+  beforeEach(async () => {
+    fs.rmSync(path.join(root, 'obelum.json'));
+    const r = await obelum('init', '--langs', 'sv,no,en', '--source', 'en', 'src/pages/{lang}/**/*.mdx');
+    expect(r.code).toBe(0);
+    git('add', '-A'); git('commit', '-q', '-m', 'single source');
+    expect((await obelum('mark', '--all')).out).toContain('marked 2 languages');   // sv and no; en keeps no copies
+  });
+
+  it('a change to en makes the targets stale; a change to a target needs nothing and makes nobody stale', async () => {
+    expect(git('ls-tree', '-r', '--name-only', 'HEAD').split('\n').filter(p => p.startsWith('.obelum/')).sort())
+      .toEqual(['.obelum/no/src/pages/en/pricing.mdx', '.obelum/sv/src/pages/en/pricing.mdx']);
+
+    write('src/pages/sv/pricing.mdx', page('sv', 'line A rättad', 'line B', 'line C'));
+    const pending = await obelum('status');
+    expect(pending.out).toMatch(/obelum edit src\/pages\/sv\/pricing\.mdx +to commit them; a target's changes go nowhere/);
+    git('add', '-A'); git('commit', '-q', '-m', 'a correction to sv, committed by hand');
+    expect((await obelum('status')).out).toContain('0 with a language behind');
+
+    write('src/pages/en/pricing.mdx', page('en', ...ABC, 'Vipps'));
+    expect((await obelum('status')).out).toMatch(/obelum fix src\/pages\/en\/pricing\.mdx +if they correct the source/);
+    git('add', '-A'); git('commit', '-q', '-m', 'en: new content');
+    const s = await obelum('status');
+    expect(s.out).toContain('sv: stale (en)');
+    expect(s.out).toContain('no: stale (en)');
+    expect(s.out).toContain('en: ok');
+  });
+
+  it('a fix on en reaches no target as something to translate; a fix on a target is refused', async () => {
+    write('src/pages/en/pricing.mdx', page('en', 'line A', 'line B', 'line C.'));
+    const f = await obelum('fix', 'src/pages/en/pricing.mdx');
+    expect(f.out).toContain('merged into');
+    expect((await obelum('status')).out).toContain('0 with a language behind');
+
+    write('src/pages/sv/pricing.mdx', page('sv', 'line A', 'line B', 'line C!'));
+    expect((await obelum('fix', 'src/pages/sv/pricing.mdx')).err).toContain('sv is a target');
+  });
+
+  it('check names the copies left over from the peer system, which nothing reads now', async () => {
+    write('.obelum/en/src/pages/sv/pricing.mdx', page('sv', ...ABC));     // the source's copy of a target
+    write('.obelum/sv/src/pages/no/pricing.mdx', page('no', ...ABC));     // a target's copy of another target
+    git('add', '-A'); git('commit', '-q', '-m', 'copies from the peer days');
+    const c = await obelum('check');
+    expect(c.code).toBe(1);
+    expect(c.out).toContain('unread: .obelum/en/src/pages/sv/pricing.mdx');
+    expect(c.out).toContain('unread: .obelum/sv/src/pages/no/pricing.mdx');
+    expect(c.out).not.toContain('unread: .obelum/sv/src/pages/en/pricing.mdx');
+    expect(c.out).toContain('2 findings');
+  });
+
+  it('refuses a source that is not one of the languages', async () => {
+    fs.rmSync(path.join(root, 'obelum.json'));
+    expect((await obelum('init', '--langs', 'sv,no', '--source', 'en', 'src/pages/{lang}/**/*.mdx')).err).toContain('--source "en" is not one of --langs');
+  });
+});
+
 describe('the verbs', () => {
   beforeEach(async () => { await obelum('mark', '--all'); });
 

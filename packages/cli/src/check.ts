@@ -5,6 +5,8 @@
  * - A copy whose language is not one of the configured languages.
  * - A copy of a file that no longer exists: the real file was renamed or
  *   deleted without its copies (rename and delete are the host's).
+ * - In single-source mode, a copy nobody reads: one the source keeps, or a
+ *   target's copy of anything but the source. Left from the peer system.
  * - A copy with merge conflict markers: a `.obelum/` conflict resolved by
  *   hand and committed as it stood.
  * - A merge commit resolved by picking sides per file: a language's copy of
@@ -16,7 +18,7 @@ import { copyPath, locate, type Config } from './config.js';
 import type { Git } from './git.js';
 
 export interface Finding {
-  kind: 'unknown-language' | 'orphan' | 'conflict-markers' | 'mixed-resolution';
+  kind: 'unknown-language' | 'orphan' | 'unread' | 'conflict-markers' | 'mixed-resolution';
   path: string;
   detail: string;
 }
@@ -37,6 +39,13 @@ export async function check(git: Git, config: Config, opts: { merges?: number } 
     if (!real.has(target)) {
       findings.push({ kind: 'orphan', path: p, detail: `${target} is not in the tree; delete the copy, or move it with the file` });
       continue;
+    }
+    if (config.source !== undefined) {
+      const viewed = locate(config, target)?.lang;
+      if (viewer === config.source || (viewed !== undefined && viewed !== config.source)) {
+        findings.push({ kind: 'unread', path: p, detail: `with "source": "${config.source}", nothing reads this copy; delete it` });
+        continue;
+      }
     }
     const content = await git.read(p);
     if (content && /^(<{7}|={7}|>{7})( |$)/m.test(content)) {

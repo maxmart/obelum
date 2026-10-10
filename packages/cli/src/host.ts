@@ -35,6 +35,7 @@ export function host(git: Git, config: Config): Host {
       file: lang => file(realPath(key, lang)),
       synced: viewer => ({ file: lang => file(copyPath(viewer, realPath(key, lang))) }),
       anchor,
+      source: config.source,
       commit: (verb, lang) => {
         const files = pending;
         pending = new Map();

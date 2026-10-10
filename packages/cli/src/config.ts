@@ -6,8 +6,12 @@
  *     "langs": ["sv", "no", "en"],
  *     "documents": ["src/pages/{lang}/**\/*.mdx", "content/*\/{lang}/*.mdx"],
  *     "anchor": "mdx",
- *     "instructions": "src/translation-glossary.md"
+ *     "instructions": "src/translation-glossary.md",
+ *     "source": "en"
  *   }
+ *
+ * With "source", only that language is translated from (single-source
+ * mode); without it, every language is (the peer system).
  *
  * A document is one pattern instance with `{lang}` left in: the key
  * `src/pages/{lang}/pricing.mdx` names every language's file at once, and
@@ -23,6 +27,8 @@ export interface Config {
   anchor?: 'mdx' | 'markdown' | 'git';
   /** A file whose contents are handed to the translator verbatim. */
   instructions?: string;
+  /** Single-source mode: the one language the others are translated from. */
+  source?: string;
 }
 
 export const CONFIG_FILE = 'obelum.json';
@@ -46,7 +52,8 @@ export function loadConfig(root: string, cwd?: string): Config {
     const problem = patternProblem(p);
     if (problem) throw new Error(`${CONFIG_FILE}: ${problem}`);
   }
-  return { langs: raw.langs, documents: raw.documents, anchor: raw.anchor, instructions: raw.instructions };
+  if (raw.source !== undefined && !raw.langs.includes(raw.source)) throw new Error(`${CONFIG_FILE}: "source" must be one of "langs"`);
+  return { langs: raw.langs, documents: raw.documents, anchor: raw.anchor, instructions: raw.instructions, source: raw.source };
 }
 
 /** What is wrong with a document pattern, or null. */
