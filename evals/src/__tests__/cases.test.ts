@@ -15,14 +15,15 @@ describe.each(cases.map(c => [c.id, c] as const))('%s', (_, c) => {
   it('passes every check with its reference', async () => {
     const { session } = await stage(c);
     const before = (await session.brief(c.target)).targetContent;
-    expect(c.checks.filter(ch => !ch.ok(c.reference, before)).map(ch => ch.label)).toEqual([]);
+    const run = { questions: c.referenceQuestions ?? [] };
+    expect(c.checks.filter(ch => !ch.ok(c.reference, before, run)).map(ch => ch.label)).toEqual([]);
   });
 
   it('fails some check when nothing is done, unless nothing is the answer', async () => {
     const { session } = await stage(c);
     const before = (await session.brief(c.target)).targetContent;
-    if (c.reference === before) return;
-    expect(c.checks.some(ch => !ch.ok(before, before))).toBe(true);
+    if (c.reference === before && !c.referenceQuestions?.length) return;
+    expect(c.checks.some(ch => !ch.ok(before, before, { questions: [] }))).toBe(true);
   });
 });
 

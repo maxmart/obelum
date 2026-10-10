@@ -20,7 +20,13 @@ export interface Step {
 export interface Check {
   label: string;
   /** `before` is the target as it was when the brief was taken. */
-  ok(out: string, before: string): boolean;
+  ok(out: string, before: string, run?: RunSeen): boolean;
+}
+
+/** What a check may see of a run besides the page: the questions the
+ *  translator raised (asked, or recorded when no one could answer). */
+export interface RunSeen {
+  questions: string[];
 }
 
 export interface Case {
@@ -39,6 +45,9 @@ export interface Case {
   /** Languages in `files` that start out never synced: no copies, so their
    *  brief has nothing to diff against. */
   neverSynced?: string[];
+  /** The questions a run with the reference answer would have raised, for
+   *  the self-test of checks that look at questions. */
+  referenceQuestions?: string[];
 }
 
 /**
@@ -202,5 +211,12 @@ export const crlf = (): Check => ({
  *  outcome is consistent, but a mixture of them is not. */
 export const either = (label: string, ...alternatives: Check[][]): Check => ({
   label,
-  ok: (out, before) => alternatives.some(all => all.every(c => c.ok(out, before))),
+  ok: (out, before, run) => alternatives.some(all => all.every(c => c.ok(out, before, run))),
+});
+
+/** The translator raised a question (its text and options) that matches
+ *  every pattern: it saw what only a person can settle, and said so. */
+export const asked = (...ps: Pattern[]): Check => ({
+  label: `asked about ${ps.map(show).join(' and ')}`,
+  ok: (_out, _before, run) => (run?.questions ?? []).some(q => ps.every(p => test(p, q))),
 });

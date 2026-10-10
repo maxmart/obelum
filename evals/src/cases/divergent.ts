@@ -107,7 +107,7 @@ const named = withText({
 
 export const divergent: Case[] = [
   {
-    id: 'acme/en-edits-shared-row',
+    id: 'divergent/en-edits-shared-row',
     about: 'en extends the support row. Swedish keeps that row in another place, has a Globex Live row of its own and payments first; the change lands in the support row and nothing Swedish moves.',
     langs, files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: edited('en', 'support', ['We\'re available every day to help', 'We\'re available every day – evenings and weekends included during tournament season – to help']) }],
@@ -119,7 +119,7 @@ export const divergent: Case[] = [
     reference: edited('sv', 'support', ['Vi finns tillgängliga varje dag för', 'Vi finns tillgängliga varje dag – även kvällar och helger under turneringssäsongen – för']),
   },
   {
-    id: 'acme/en-adds-row',
+    id: 'divergent/en-adds-row',
     about: 'en adds a referee row after the app row. Swedish gets it, after its own app row, with its ids, and keeps its own order and Globex Live row.',
     langs, files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: page('en', { ...en, referees: refereesEn }, ['hero', 'section', 'ai', 'fjordby', 'support', 'payment', 'app', 'referees', 'band', 'columns', 'sister', 'youthcup']) }],
@@ -133,7 +133,7 @@ export const divergent: Case[] = [
     reference: page('sv', { ...sv, referees: refereesSv }, ['hero', 'section', 'payment', 'ai', 'support', 'streaming', 'app', 'referees', 'fjordby', 'band', 'columns', 'sister', 'youthcup']),
   },
   {
-    id: 'acme/en-adds-row-localized-link',
+    id: 'divergent/en-adds-row-localized-link',
     about: 'Same added row, checked for one convention of this site: every Swedish link starts /sv/. The row\'s link should too; the prompt\'s "do not change URLs" pulls the other way.',
     langs, files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: page('en', { ...en, referees: refereesEn }, ['hero', 'section', 'ai', 'fjordby', 'support', 'payment', 'app', 'referees', 'band', 'columns', 'sister', 'youthcup']) }],
@@ -141,7 +141,7 @@ export const divergent: Case[] = [
     reference: page('sv', { ...sv, referees: refereesSv }, ['hero', 'section', 'payment', 'ai', 'support', 'streaming', 'app', 'referees', 'fjordby', 'band', 'columns', 'sister', 'youthcup']),
   },
   {
-    id: 'acme/en-removes-row',
+    id: 'divergent/en-removes-row',
     about: 'en drops the Fjordby case study, which Swedish keeps further down. It goes from Swedish too, and nothing else moves.',
     langs, files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: page('en', en, enOrder.filter(k => k !== 'fjordby')) }],
@@ -156,7 +156,7 @@ export const divergent: Case[] = [
     reference: page('sv', sv, svOrder.filter(k => k !== 'fjordby')),
   },
   {
-    id: 'acme/en-extends-list-sentence',
+    id: 'divergent/en-extends-list-sentence',
     about: 'en adds QR tickets to the features sentence. Swedish leads that sentence with Globex Live; the new feature arrives and the Swedish lead stays.',
     langs, files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: edited('en', 'columns', ['SMS notifications and check-in.', 'SMS notifications, check-in and QR tickets.']) }],
@@ -168,7 +168,7 @@ export const divergent: Case[] = [
     reference: edited('sv', 'columns', ['SMS-utskick och incheckning.', 'SMS-utskick, incheckning och QR-biljetter.']),
   },
   {
-    id: 'acme/en-edits-moved-row',
+    id: 'divergent/en-edits-moved-row',
     about: 'en adds Apple Pay to the payments row, which Swedish has moved to the top. The change lands there and the row stays first.',
     langs, files, target: 'sv',
     steps: [{
@@ -188,7 +188,7 @@ export const divergent: Case[] = [
       ['betala med kort eller Klarna', 'betala med kort, Klarna eller Apple Pay']),
   },
   {
-    id: 'acme/one-change-two-places-price',
+    id: 'divergent/one-change-two-places-price',
     about: 'en raises the licence price in its Pricing column, the only place English states it. Swedish states it there and in its payments row at the top; both change. Acme Clubs\'s own 95 is another price and stays.',
     langs, files: priced.files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: change(priced.files.en, ['The licence costs SEK 95 per team.', 'The licence costs SEK 110 per team.']) }],
@@ -203,7 +203,7 @@ export const divergent: Case[] = [
     reference: change(priced.files.sv, ['ingår i licensen på 95 kr per lag.', 'ingår i licensen på 110 kr per lag.'], ['Licensen kostar 95 kr per lag.', 'Licensen kostar 110 kr per lag.']),
   },
   {
-    id: 'acme/one-change-two-places-rename',
+    id: 'divergent/one-change-two-places-rename',
     about: 'en renames its AI scheduler (SmartSchedule → AutoPlan) in the AI row, the only place English names it. Swedish names it there and in its features sentence; both change. "Smartare schemaläggning" is not the name and stays.',
     langs, files: named.files, target: 'sv',
     steps: [{ verb: 'edit', lang: 'en', content: change(named.files.en, ['Our scheduler, SmartSchedule,', 'Our scheduler, AutoPlan,']) }],
@@ -219,7 +219,7 @@ export const divergent: Case[] = [
     reference: change(named.files.sv, ['schemaläggare SmartSchedule löser', 'schemaläggare AutoPlan löser'], ['spelscheman med SmartSchedule.', 'spelscheman med AutoPlan.']),
   },
   {
-    id: 'acme/sv-edits-shared-row',
+    id: 'divergent/sv-edits-shared-row',
     about: 'sv extends the AI row. English gets the change, in its own order, and nothing of Sweden\'s: no Globex Live, no payments-first.',
     langs, files, target: 'en',
     steps: [{ verb: 'edit', lang: 'sv', content: edited('sv', 'ai', ['vilotider och specialönskemål.', 'vilotider och specialönskemål. Med AI tar det minuter i stället för dagar.']) }],
@@ -231,7 +231,7 @@ export const divergent: Case[] = [
     reference: page('en', { ...en, ai: change(en.ai, ['special requests to consider.', 'special requests to consider. With AI it takes minutes instead of days.']) }, enOrder),
   },
   {
-    id: 'acme/sv-edits-own-row',
+    id: 'divergent/sv-edits-own-row',
     about: 'sv edits its Globex Live row, which English never had. Nothing in English changes.',
     langs, files, target: 'en',
     steps: [{ verb: 'edit', lang: 'sv', content: edited('sv', 'streaming', ['en ny intäktskälla för cupen.', 'en ny intäktskälla för cupen, utbetald direkt till ert konto.']) }],
@@ -292,7 +292,7 @@ function harder(): Case[] {
 
   return [
     {
-      id: 'acme/en-promotes-what-sv-already-promotes',
+      id: 'divergent/en-promotes-what-sv-already-promotes',
       about: 'en moves its payments row up the page. Swedish already has payments first, so it already does what the change is for: nothing to do.',
       langs, files, target: 'sv',
       steps: [{ verb: 'edit', lang: 'en', content: enAfter(promoted) }],
@@ -300,7 +300,7 @@ function harder(): Case[] {
       reference: home.sv,
     },
     {
-      id: 'acme/en-adds-what-sv-already-says',
+      id: 'divergent/en-adds-what-sv-already-says',
       about: 'en adds that support answers in Swedish, Norwegian and English. Swedish already says so, in the same row: nothing to do.',
       langs, files: languages.files, target: 'sv',
       steps: [{ verb: 'edit', lang: 'en', content: change(languages.files.en, ['with match schedules and planning advice.', 'with match schedules and planning advice. We answer in Swedish, Norwegian and English.']) }],
@@ -308,7 +308,7 @@ function harder(): Case[] {
       reference: languages.files.sv,
     },
     {
-      id: 'acme/en-edits-en-only-row',
+      id: 'divergent/en-edits-en-only-row',
       about: 'en changes its webinar row, which only English has (webinars in English, for organisers abroad). Swedish has nothing it applies to.',
       langs, files: { en: enWebinar, sv: home.sv }, target: 'sv',
       steps: [{ verb: 'edit', lang: 'en', content: change(enWebinar, ['Every month we run', 'Every other week we run'], ['title="Monthly webinars in English"', 'title="Webinars in English, every other week"']) }],
@@ -316,7 +316,7 @@ function harder(): Case[] {
       reference: home.sv,
     },
     {
-      id: 'acme/en-fixes-english-typo',
+      id: 'divergent/en-fixes-english-typo',
       about: 'en fixes a typo of its own ("you account" → "your account"). The Swedish never had it: nothing to do.',
       langs, files: typo.files, target: 'sv',
       steps: [{ verb: 'edit', lang: 'en', content: change(typo.files.en, ['lands in you account', 'lands in your account']) }],
@@ -324,7 +324,7 @@ function harder(): Case[] {
       reference: typo.files.sv,
     },
     {
-      id: 'acme/en-drops-klarna-everywhere',
+      id: 'divergent/en-drops-klarna-everywhere',
       about: 'en drops Klarna everywhere it mentions it (the payments row and the intro), so Klarna is no longer offered. Swedish loses every Klarna a reader sees, the one in its own features sentence too, while the kort-och-klarna URL and the image path, which are not text, stay.',
       langs, files: klarna.files, target: 'sv',
       steps: [{
@@ -353,7 +353,7 @@ function harder(): Case[] {
         ['SMS-utskick och incheckning – och betalning med Klarna direkt i appen.', 'SMS-utskick och incheckning.']),
     },
     {
-      id: 'acme/never-synced-keeps-own',
+      id: 'divergent/never-synced-keeps-own',
       about: 'Swedish has never synced (first adoption): its own order, a Globex Live row only it has, and no East Africa row. It gains the East Africa row and keeps everything of its own.',
       langs, files: { en: home.en, sv: svOwn }, target: 'sv', neverSynced: ['sv'],
       steps: [],

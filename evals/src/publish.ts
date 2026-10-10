@@ -31,6 +31,8 @@ export interface PublishedRun {
   reasoning: string;
   /** Its tool calls, in order. */
   actions: string[];
+  /** What it asked, and the answer if anyone gave one. */
+  questions?: { question: string; options: string[]; guess: string; answer: string | null }[];
   prompt: { system: string; user: string };
   edits: number;
   turns: number;
@@ -134,6 +136,7 @@ for (const c of cases) {
         output: r.output,
         reasoning: r.reasoning,
         actions: r.actions ?? [],
+        questions: r.questions ?? [],
         prompt: r.prompt,
         edits: r.edits,
         turns: r.usage.turns,

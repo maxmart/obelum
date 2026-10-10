@@ -70,11 +70,11 @@ const GROUPS: Record<string, string> = {
   structure: 'The target is shaped differently from the source: a section of its own, a split paragraph, merged list items, reordered sections, a table for a list.',
   locality: 'Finding the place: one change in a long page, blocks that read the same, scattered changes.',
   format: 'Front matter, MDX props, code blocks, tables, a moved section, a rewrap, CRLF line endings.',
-  multi: 'More than one language has changed, or the target has edits of its own.',
+  'multi-source': 'More than one language has changed (two siblings, siblings that disagree, a sibling the target never saw), or the target has edits of its own.',
   new: 'A target that does not exist yet.',
   big: 'Pages at real size, a few hundred lines, most of them repeated somewhere.',
   fix: 'The target fixed something itself, then another language changed the same line or sentence.',
-  acme: 'A real product homepage, with every product, partner, place and person name made up. Its Swedish version differs from the English on purpose: a streaming partner only Sweden promotes, payments first, a case study further down.',
+  divergent: 'A real product homepage, with every product, partner, place and person name made up. Its Swedish version differs from the English on purpose: a streaming partner only Sweden promotes, payments first, a case study further down.',
 };
 
 // ── index ─────────────────────────────────────────────────────────────────
@@ -139,6 +139,7 @@ ${r.complete ? '' : `<p class="error">Incomplete: the run was not saved${r.error
 <ul class="checks">${r.checks.map(ch => `<li class="${ch.ok ? 'ok' : 'bad'}">${ch.ok ? '✓' : '✗'} <code>${esc(ch.label)}</code></li>`).join('')}</ul>
 <h4>${esc(lang(c.target))}, before → after</h4>
 ${result}
+${(r.questions ?? []).length ? `<h4>Questions it raised</h4><ul class="questions">${(r.questions ?? []).map(q => `<li>${esc(q.question)}${q.options.length ? ` <span class="small">(options: ${q.options.map(esc).join(' · ')})</span>` : ''}<br><span class="small">${q.answer ? `answered: ${esc(q.answer)}` : `no one to answer; its guess: ${esc(q.guess)}`}</span></li>`).join('')}</ul>` : ''}
 <h4>The translator's notes</h4>
 <pre class="notes">${esc(r.reasoning.trim()) || '<em>(none)</em>'}</pre>
 ${r.actions.length ? `<h4>Tool calls</h4><ol class="actions">${r.actions.map(a => `<li><code>${esc(a)}</code></li>`).join('')}</ol>` : ''}

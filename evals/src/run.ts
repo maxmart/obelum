@@ -135,14 +135,16 @@ interface RunResult {
   cost?: number;
   /** Claude Code's tool calls, in order. */
   actions?: string[];
+  /** The questions the translator raised; no one answers them in an eval. */
+  questions?: { question: string; options: string[]; guess: string; answer: string | null }[];
 }
 
 const judgeClient = args.judge ? new Anthropic({ apiKey }) : undefined;
 
 /** The case's checks on a result, and the judge's verdict when asked for. */
-async function score(c: Case, brief: Awaited<ReturnType<Awaited<ReturnType<typeof stage>>['session']['brief']>>, output: string) {
+async function score(c: Case, brief: Awaited<ReturnType<Awaited<ReturnType<typeof stage>>['session']['brief']>>, output: string, questions: string[] = []) {
   const checks = c.checks.map(check => {
-    try { return { label: check.label, ok: check.ok(output, brief.targetContent) }; }
+    try { return { label: check.label, ok: check.ok(output, brief.targetContent, { questions }) }; }
     catch (err) { return { label: check.label, ok: false, error: String(err) }; }
   });
   let verdict: Verdict | undefined;
@@ -209,7 +211,8 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
   const output = done?.type === 'done' ? done.finalContent : brief.targetContent;
   const complete = done?.type === 'done' && done.complete;
 
-  const { checks, verdict } = await score(c, brief, output);
+  const questions = events.flatMap(e => (e.type === 'question' ? [{ question: e.question, options: e.options, guess: e.guess, answer: e.answer }] : []));
+  const { checks, verdict } = await score(c, brief, output, questions.map(q => [q.question, ...q.options].join(' ')));
   const errors = events.flatMap(e => (e.type === 'error' ? [e.error] : []));
   return {
     case: c.id, variant: v.label, style, fix: v.fix, rep, complete,
@@ -225,6 +228,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
     reasoning: events.flatMap(e => (e.type === 'reasoning' ? [e.text] : [])).join(''),
     prompt,
     actions,
+    questions,
   };
 }
 
