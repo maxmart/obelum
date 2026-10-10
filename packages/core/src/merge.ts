@@ -1,8 +1,8 @@
 /**
  * The three-way merge the fan-out runs: the change old → new, merged into a
  * sibling's synced copy of the changed language. Whole-file: either the
- * whole change lands or the copy is left as it was, and the sibling sees
- * the change as news. Hunk-level application is a later refinement.
+ * whole change lands or the copy is left as it was, and the whole change
+ * is in the sibling's next diff. Hunk-level application is a later refinement.
  *
  * node-diff3 is what isomorphic-git merges with, so a browser host's git
  * and this agree by construction. Lines are split on '\n' only; the host

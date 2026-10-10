@@ -44,9 +44,9 @@ loop and hands back the result, which the host saves as the sync.
 **Think of each language as a branch.** `.obelum/sv/` is the sv branch: the
 whole repository as sv knows it. An edit is a commit on the author's branch.
 A sync copies the siblings' files onto the target's branch and rewrites the
-target. A fix is cherry-picked onto every other branch's copy, a three-way
-merge that lands when the fix and an unseen edit touch different places and
-is left alone when they overlap. Real branches would be unbearable, so the
+target. A fix is cherry-picked onto every branch's copy, the fixer's own
+included, a three-way merge that lands when the fix and an unseen edit touch
+different places and is left alone when they overlap. Real branches would be unbearable, so the
 branches are directories in one tree, and git's merging and diffing follow.
 
 **It costs less than it looks.** Git stores content by hash, so a copy that
@@ -62,8 +62,8 @@ documents. A host working on git objects can keep them off disk entirely
 | verb | writes |
 |---|---|
 | `edit L` | L's real file. Nothing else. The only verb that creates staleness. |
-| `fix L` | L's real file, then the change old L → new L merged three-way into every sibling's synced copy of L. A copy the change does not merge into cleanly is left alone, and that sibling sees the whole fix as news. |
-| `sync L` | the same as fix, then L's synced copies of every language overwritten with the real files. A translation is never news for a sibling. |
+| `fix L` | L's real file, then the change old L → new L merged three-way into every sibling's synced copy of L. A copy the change does not merge into cleanly is left alone, and the whole fix is in that sibling's next diff. |
+| `sync L` | the same as fix, then L's synced copies of every language overwritten with the real files. A translation is never in a sibling's next diff. |
 | `markAsSynced L` | only the second half of sync. An ops primitive, not a button: it asserts a claim that can be false. |
 
 Each verb ends in exactly one commit naming what it wrote.
@@ -148,9 +148,9 @@ more. After edit sv, sync no, sync en, that is sv: its copies of no and en
 already matched (the syncs fanned out into them), and its copy of *itself*
 now catches up too, because an edit everyone has translated is behind
 everyone, the editor included, and is no longer a local change for a later
-sync of sv to preserve. A fix leaves nobody behind, so a language whose only
-change is a fix is never a source and keeps that fix. A round that is not
-finished is simply never closed.
+sync of sv to preserve. A fix leaves nobody behind and is already in the
+fixer's own copy, so a language whose only change is a fix is never a
+source. A round that is not finished is simply never closed.
 
 ### Translating
 

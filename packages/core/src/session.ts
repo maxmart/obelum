@@ -10,18 +10,21 @@
  *   edit L          L's real file. Nothing else. The only verb that
  *                   creates staleness.
  *   fix L           L's real file, then the change old L → new L merged
- *                   three-way into every sibling's synced copy of L. A copy
- *                   the change does not merge into cleanly is left alone,
- *                   and that sibling sees the whole fix as news.
+ *                   three-way into every synced copy of L, L's own
+ *                   included. A copy the change does not merge into cleanly
+ *                   is left alone, and the whole fix is in that language's
+ *                   next diff (for L itself, as a change of its own).
  *   sync L          the same as fix, then L's synced copies of every
  *                   language overwritten with the real files. A translation
- *                   is never news for a sibling.
+ *                   is never in a sibling's next diff.
  *   markAsSynced L  only the second half of sync. An ops primitive: it
  *                   asserts a claim that can be false.
  *
- * fix never writes the diagonal (L's synced copy of L): that is written
- * only by sync and markAsSynced, so its diff against real L is what L
- * changed itself since its last sync, which a translator is told to keep.
+ * The diagonal (L's synced copy of L) against real L is what L edited
+ * since its last sync, which a translator is told to keep. A fix is merged
+ * into it like any other copy: a fix is part of L's text, not a change to
+ * keep, and a "keep this" on it froze the whole line it sat on, old wording
+ * included, against a sibling rewording that line.
  */
 import type { Document, File } from './document.js';
 import { merge3 } from './merge.js';
@@ -40,7 +43,7 @@ export interface FanoutResult {
   lang: string;
   /** Siblings whose copy now carries the change. */
   merged: string[];
-  /** Siblings whose copy was left alone; they will see the change as news. */
+  /** Siblings whose copy was left alone; the change will be in their next diff. */
   conflicted: string[];
 }
 
@@ -66,8 +69,8 @@ export interface Session {
  * edited language's own copy of itself catches up once everyone has its
  * edit — an edit that everyone has translated is behind everyone, the
  * editor included, and is no longer a local change for a later sync to
- * preserve. A fix leaves nobody behind, so a language whose only change is
- * a fix is never a source and keeps that fix in its own copy's diff. A
+ * preserve. A fix leaves nobody behind and is already in the fixer's own
+ * copy, so a language whose only change is a fix is never a source. A
  * round that is not finished is simply never closed.
  */
 export interface Round {
@@ -86,14 +89,26 @@ export function obelum(document: Document): Session {
     if ((await read(f)) !== content) await f.write(content);
   };
 
-  /** Merge the change old → next into every sibling's synced copy of lang. */
+  /** Merge the change old → next into every language's synced copy of
+   *  lang: the siblings', and lang's own. */
   async function fanout(lang: string, old: string, next: string): Promise<FanoutResult> {
     const result: FanoutResult = { lang, merged: [], conflicted: [] };
+    // lang's own copy takes the change too, so its diff against the real file
+    // stays what lang edited since its last sync, with no fix in it. A brief
+    // tells the translator to keep that diff; a fix in it would freeze the
+    // whole line it sits on, old wording and all, against a sibling's change
+    // to that line. A conflict leaves the copy alone and the fix in the diff.
+    // A language that never synced keeps no copy of itself: none is made.
+    const own = await read(copyOf(lang, lang));
+    if (own !== null) {
+      const m = merge3(own, old, next);
+      if (m.clean) await put(copyOf(lang, lang), m.content);
+    }
     for (const viewer of langs) {
       if (viewer === lang) continue;
       const copy = await read(copyOf(viewer, lang));
       // A missing synced file is an empty base: the sibling never saw this
-      // language, and is synced to it now rather than told it is news.
+      // language, and is synced to it now rather than given it as a diff.
       const m = copy === null ? merge3('', '', next) : merge3(copy, old, next);
       if (!m.clean) { result.conflicted.push(viewer); continue; }
       await put(copyOf(viewer, lang), m.content);

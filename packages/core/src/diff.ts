@@ -2,6 +2,7 @@
  * The brief's diff: unified, three lines of context, and after each `@@`
  * the nearest anchor line above the hunk so a translator can find its place.
  * The host says which lines are anchors; the default is git's own rule.
+ * A translator that wants the whole file as one hunk asks for Infinity.
  */
 import { structuredPatch } from 'diff';
 
@@ -10,10 +11,11 @@ export type Anchor = (line: string) => boolean;
 /** git's default: a line that starts with a letter, `_` or `$`. */
 export const gitAnchor: Anchor = line => /^[A-Za-z_$]/.test(line);
 
-/** Unified diff from `before` to `after`; '' when they are equal. */
-export function unifiedDiff(before: string, after: string, anchor: Anchor = gitAnchor): string {
+/** Unified diff from `before` to `after` with `context` unchanged lines
+ *  around each change; '' when they are equal. */
+export function unifiedDiff(before: string, after: string, anchor: Anchor = gitAnchor, context = 3): string {
   if (before === after) return '';
-  const patch = structuredPatch('a', 'b', before, after, undefined, undefined, { context: 3 });
+  const patch = structuredPatch('a', 'b', before, after, undefined, undefined, { context });
   const oldLines = before.split('\n');
   const out: string[] = [];
   for (const h of patch.hunks) {

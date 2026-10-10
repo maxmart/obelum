@@ -2,7 +2,8 @@
  * The fifteen traces from sync-copies-lab/traces.sh, against the in-memory
  * host in lab.ts. Matrices and evidence are the ones the shell prototype
  * printed (out/run-leave.txt: three-way fix, diagonal left alone), which
- * are the ones the design session's §9 findings were drawn from.
+ * are the ones the design session's §9 findings were drawn from. One rule
+ * has changed since: a fix now reaches the diagonal too (trace 11).
  */
 import { fresh, lab, page, ABC, matrix, evidence, real, copy, LANGS, ALL_OK } from './lab.js';
 
@@ -124,7 +125,7 @@ describe('5. two branches both sync sv', () => {
 });
 
 describe('6. hand-resolved foreign merge (contractor PR, git auto-merges)', () => {
-  it('the merged edit is news for everyone', async () => {
+  it('the merged edit is in the next diff of every language', async () => {
     const { session, repo } = fresh();
     repo.branch('pr');
     repo.tree.set(real('no'), page('no', 'line A by contractor', 'line B', 'line C')); repo.commit('contractor');
@@ -198,17 +199,30 @@ describe('10. sparse checkout: the verbs work on objects', () => {
 });
 
 describe('11. the diagonal', () => {
-  it('fix leaves L\'s own synced copy alone, so sv\'s own diff says what sv changed itself', async () => {
+  it('fix reaches L\'s own synced copy too, so sv\'s own diff holds only what sv edited', async () => {
     const { session } = fresh();
     await session.sync('sv', page('sv', ...ABC));
     await session.fix('sv', page('sv', 'line A', 'line B (bättre ordval)', 'line C'));
     await session.edit('no', page('no', 'line A ny', 'line B', 'line C'));
     expect(await evidence(session, 'sv', 'no')).toBe(
       '@@ -1,4 +1,4 @@\n Pricing (no)\n-line A\n+line A ny\n line B\n line C');
-    expect(await evidence(session, 'sv', 'sv')).toBe(
-      '@@ -1,4 +1,4 @@\n Pricing (sv)\n line A\n-line B\n+line B (bättre ordval)\n line C');
-    // and the siblings never saw the fix as news
+    // The fix is part of sv's text now, not a change the translator must
+    // keep: a sibling rewording line B is free to reword the fixed line.
+    expect(await evidence(session, 'sv', 'sv')).toBe('');
+    // and the fix is in no sibling's diff
     expect((await session.stale()).no.stale).toEqual([]);
+  });
+
+  it('an unsynced edit stays in the own diff, with a fix beside it merged past it', async () => {
+    const { session } = fresh();
+    await session.edit('sv', page('sv', ...ABC, 'Swish'));
+    await session.fix('sv', page('sv', 'line A', 'line B (bättre ordval)', 'line C', 'Swish'));
+    const own = await evidence(session, 'sv', 'sv');
+    expect(own).toContain('+Swish');
+    expect(own).not.toMatch(/^[+-].*bättre/m);   // context at most, never a change
+    // A fix inside the unsynced edit does not merge; it stays with the edit.
+    await session.fix('sv', page('sv', 'line A', 'line B (bättre ordval)', 'line C', 'Swish accepterad'));
+    expect(await evidence(session, 'sv', 'sv')).toContain('+Swish accepterad');
   });
 });
 
@@ -276,7 +290,7 @@ describe('14. recovery from a mixed .obelum conflict resolution', () => {
 });
 
 describe('15. birth: the page exists only in no', () => {
-  it('missing languages make nobody stale; a newborn is synced to at once, not news', async () => {
+  it('missing languages make nobody stale; a newborn is synced to at once, not given as a diff', async () => {
     const { session, repo } = fresh();
     for (const p of [...repo.tree.keys()]) if (p !== real('no')) repo.tree.delete(p);
     repo.commit('only no exists');
@@ -298,7 +312,7 @@ describe('15. birth: the page exists only in no', () => {
 });
 
 describe('9c. sync fans out like fix', () => {
-  it('edit sv, sync no, sync en: all clear, a translation is never news', async () => {
+  it('edit sv, sync no, sync en: all clear, a translation is in no diff', async () => {
     const { session, commits } = fresh();
     await session.edit('sv', page('sv', 'line A ändrad', 'line B', 'line C'));
     await session.sync('no', page('no', 'line A endret', 'line B', 'line C'));
@@ -357,7 +371,7 @@ describe('16b. a round closes only its sources', () => {
     expect(repo.tree.get(copy('sv', 'sv'))).toBe(page('sv', 'line A ny', 'line B (bättre ordval)', 'line C'));
   });
 
-  it('keeps a fix in the self diff when the fixed language is not synced in the round', async () => {
+  it('never makes a fixed language a source, however many rounds run', async () => {
     const { session, repo } = fresh();
     await session.fix('en', page('en', 'line A', 'line B (better wording)', 'line C'));
     await session.edit('no', page('no', 'line A ny', 'line B', 'line C'));

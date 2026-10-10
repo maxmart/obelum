@@ -23,6 +23,15 @@ describe('unifiedDiff', () => {
     ].join('\n'));
   });
 
+  it('gives the whole file as one hunk when asked for unlimited context', () => {
+    const before = Array.from({ length: 20 }, (_, i) => `l${i}`).join('\n') + '\n';
+    const after = before.replace('l2\n', 'L2\n').replace('l17\n', 'L17\n');
+    const lines = unifiedDiff(before, after, undefined, Infinity).split('\n');
+    expect(lines[0]).toBe('@@ -1,20 +1,20 @@');
+    expect(lines.slice(1).filter(l => l.startsWith(' '))).toHaveLength(18);
+    expect(lines.slice(1).filter(l => !l.startsWith(' '))).toEqual(['-l2', '+L2', '-l17', '+L17']);
+  });
+
   it('marks a missing trailing newline the way git does', () => {
     expect(unifiedDiff('PNGv1', 'PNGv2')).toBe(
       '@@ -1 +1 @@\n-PNGv1\n\\ No newline at end of file\n+PNGv2\n\\ No newline at end of file');

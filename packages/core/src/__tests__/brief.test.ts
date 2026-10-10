@@ -18,15 +18,23 @@ describe('brief', () => {
     });
   });
 
-  it('includes the target\'s own local changes, and sync saves the translation', async () => {
+  it('includes the target\'s own local edits, and sync saves the translation', async () => {
     const { session, commits } = fresh();
-    await session.fix('sv', page('sv', 'line A', 'line B (bättre)', 'line C'));
+    await session.edit('sv', page('sv', 'line A', 'line B', 'line C', 'Swish'));
     await session.edit('no', page('no', 'line A ny', 'line B', 'line C'));
     const brief = await session.brief('sv');
     expect(brief.langDiffs.map(d => d.lang)).toEqual(['sv', 'no']);
-    await session.sync('sv', page('sv', 'line A ny', 'line B (bättre)', 'line C'));
+    await session.sync('sv', page('sv', 'line A ny', 'line B', 'line C', 'Swish'));
     expect(commits.at(-1)!.message).toBe('sync sv');
-    expect(await matrix(session)).toEqual({ sv: 'no:ok en:ok', no: 'sv:ok en:ok', en: 'sv:ok no:STALE' });
+    // sv's own edit is still in no's and en's next diff; the sync of no's change is not.
+    expect(await matrix(session)).toEqual({ sv: 'no:ok en:ok', no: 'sv:STALE en:ok', en: 'sv:STALE no:STALE' });
+  });
+
+  it('leaves the target\'s own fixes out of its brief: they are its text, not changes to keep', async () => {
+    const { session } = fresh();
+    await session.fix('sv', page('sv', 'line A', 'line B (bättre)', 'line C'));
+    await session.edit('no', page('no', 'line A ny', 'line B', 'line C'));
+    expect((await session.brief('sv')).langDiffs.map(d => d.lang)).toEqual(['no']);
   });
 
   it('briefs a newborn language with empty bases and whole-file diffs', async () => {
