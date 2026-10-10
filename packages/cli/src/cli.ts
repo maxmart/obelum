@@ -8,7 +8,7 @@
  *   obelum fix <file>             … as a fix: merged into every sibling's copy
  *   obelum sync <file> [--from <path>|-]   … as a sync (a translation landing)
  *   obelum mark <file> | --all    markAsSynced one language, or every document
- *   obelum translate <file> [--all] [--with claude]
+ *   obelum translate <file> [--all] [--no-ask] [--with claude]
  *   obelum check [--merges N] [--json]
  *
  * <file> is a real path; the document and language are read off it. Every
@@ -30,8 +30,13 @@ export interface Io {
   /** Whole stdin, for `sync --from -`. */
   stdin?: () => Promise<string>;
   /** A translator for `translate`; defaults to @obelum/translator-claude. */
-  translator?: (opts: { apiKey: string; instructions?: string }) => Translator;
+  translator?: (opts: { apiKey: string; instructions?: string; ask?: Io['ask'] }) => Translator;
   env?: Record<string, string | undefined>;
+  /** Puts the translator's question to the person at the terminal, and
+   *  resolves with their answer, or null for none. Absent when nobody is
+   *  there to ask (no terminal, or --no-ask): questions are then only
+   *  printed, and what they are about is left as it was. */
+  ask?: (q: { question: string; options: string[]; guess: string }) => Promise<string | null>;
 }
 
 export interface Translator {
@@ -55,7 +60,7 @@ function parse(argv: string[]): Args {
       if (eq > 0) { flags[a.slice(2, eq)] = a.slice(eq + 1); continue; }
       const name = a.slice(2);
       const next = rest[i + 1];
-      if (next !== undefined && !next.startsWith('--') && !['all', 'json', 'help'].includes(name)) { flags[name] = next; i++; }
+      if (next !== undefined && !next.startsWith('--') && !['all', 'json', 'help', 'no-ask'].includes(name)) { flags[name] = next; i++; }
       else flags[name] = true;
     } else positional.push(a);
   }
@@ -71,7 +76,8 @@ const USAGE = `usage: obelum <command> [options]
   fix <file>                      commit the working copy as a fix
   sync <file> [--from <path>|-]   commit as a sync; content from --from, or the working copy
   mark <file> | mark --all        mark a language, or every document, as synced
-  translate <file> [--all]        translate <file> from its siblings (needs ANTHROPIC_API_KEY)
+  translate <file> [--all]        translate <file> from its siblings (needs ANTHROPIC_API_KEY);
+                                  asks you in a terminal when it cannot tell, unless --no-ask
   check [--merges N] [--json]     audit .obelum/
 
 <file> is a real path such as src/pages/sv/pricing.mdx.`;
@@ -354,7 +360,8 @@ async function translate(h: Host, args: Args, io: Io): Promise<number> {
     ? fs.readFileSync(path.join(h.git.root, h.config.instructions), 'utf8')
     : undefined;
   const make = io.translator ?? (await claudeTranslator(args.flags.with));
-  const translator = make({ apiKey: apiKey ?? '', instructions });
+  const ask = args.flags['no-ask'] ? undefined : io.ask;
+  const translator = make({ apiKey: apiKey ?? '', instructions, ask });
   const session = h.document(key);
 
   const targets = args.flags.all
@@ -376,6 +383,8 @@ async function translate(h: Host, args: Args, io: Io): Promise<number> {
     if (content === null) { io.stderr(`${realPath(key, t)}: the translation did not complete; not saved`); failed++; continue; }
     const r = await round.sync(t, content);
     io.stdout(`sync ${realPath(key, t)}: committed` + (r.conflicted.length ? `; left alone for ${r.conflicted.join(', ')}` : ''));
+    const open = events.unanswered();
+    if (open) io.stderr(`${realPath(key, t)}: ${open} question${open === 1 ? '' : 's'} left unanswered (above); what ${open === 1 ? 'it is' : 'they are'} about was left as it was`);
   }
   if (args.flags.all) {
     const marked = await round.done();
@@ -391,13 +400,22 @@ async function translate(h: Host, args: Args, io: Io): Promise<number> {
  * written at a newline, or when another kind of event arrives, so a
  * sentence stays one line.
  */
-function reporter(io: Io): { onEvent: (e: { type: string; [k: string]: unknown }) => void; flush: () => void } {
+function reporter(io: Io): { onEvent: (e: { type: string; [k: string]: unknown }) => void; flush: () => void; unanswered: () => number } {
   let text = '';
+  let unanswered = 0;
   const model = (line: string) => { if (line.trim()) io.stderr(`│ ${line.trim()}`); };
   const flush = () => { model(text); text = ''; };
   return {
     flush,
+    unanswered: () => unanswered,
     onEvent: e => {
+      if (e.type === 'question') {
+        flush();
+        model(`question: ${String(e.question)}`);
+        if (e.answer) model(`answer: ${String(e.answer)}`);
+        else { model(`unanswered; its guess was: ${String(e.guess)}`); unanswered++; }
+        return;
+      }
       if (e.type === 'reasoning') {
         text += String(e.text);
         const lines = text.split('\n');
@@ -414,7 +432,7 @@ function reporter(io: Io): { onEvent: (e: { type: string; [k: string]: unknown }
 
 async function claudeTranslator(withFlag: string | boolean | undefined): Promise<NonNullable<Io['translator']>> {
   if (withFlag !== undefined && withFlag !== true && withFlag !== 'claude') throw new Error(`unknown translator "${withFlag}"; only claude is available`);
-  let mod: { claude: (o: { apiKey: string; instructions?: string }) => Translator };
+  let mod: { claude: (o: { apiKey: string; instructions?: string; ask?: Io['ask'] }) => Translator };
   try {
     mod = await import('@obelum/translator-claude') as typeof mod;
   } catch {

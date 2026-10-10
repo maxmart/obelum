@@ -29,14 +29,16 @@ async function obelumIn(dir: string, ...argv: string[]): Promise<Result> {
     stdout: l => out.push(l),
     stderr: l => err.push(l),
     stdin: async () => stdinText,
-    translator: () => ({ run: async brief => script(brief) }),
+    translator: opts => { madeWith = opts; return { run: async (brief, o) => script(brief, o?.onEvent) }; },
     env: { ANTHROPIC_API_KEY: 'test' },
+    ask: async () => 'asked',
   };
   const code = await run(argv, io);
   return { code, out: out.join('\n'), err: err.join('\n') };
 }
 let stdinText = '';
-let script: (brief: import('@obelum/core').Brief) => string | null = () => null;
+let script: (brief: import('@obelum/core').Brief, onEvent?: (e: { type: string; [k: string]: unknown }) => void) => string | null = () => null;
+let madeWith: { ask?: unknown } | undefined;
 
 const page = (lang: string, ...lines: string[]) => [`# Pricing (${lang})`, ...lines].join('\n') + '\n';
 const ABC = ['line A', 'line B', 'line C'];
@@ -203,6 +205,27 @@ describe('the verbs', () => {
 
 describe('translate', () => {
   beforeEach(async () => { await obelum('mark', '--all'); });
+
+  it('prints the questions the translator asks, counts the unanswered, and withholds the asker with --no-ask', async () => {
+    write('src/pages/sv/pricing.mdx', page('sv', 'line A ändrad', 'line B', 'line C'));
+    await obelum('edit', 'src/pages/sv/pricing.mdx');
+    script = (brief, onEvent) => {
+      onEvent?.({ type: 'question', question: 'sv says one thing, en another: which?', options: [], guess: 'keep it', answer: null });
+      return page(brief.targetLang, 'line A', 'line B', 'line C');
+    };
+    const r = await obelum('translate', 'src/pages/no/pricing.mdx', '--no-ask');
+    expect(madeWith?.ask).toBeUndefined();
+    expect(r.err).toContain('│ question: sv says one thing, en another: which?');
+    expect(r.err).toContain('│ unanswered; its guess was: keep it');
+    expect(r.err).toContain('src/pages/no/pricing.mdx: 1 question left unanswered (above)');
+    expect(r.out).toContain('sync src/pages/no/pricing.mdx: committed');
+
+    await obelum('edit', 'src/pages/sv/pricing.mdx');
+    write('src/pages/sv/pricing.mdx', page('sv', 'line A ändrad igen', 'line B', 'line C'));
+    await obelum('edit', 'src/pages/sv/pricing.mdx');
+    await obelum('translate', 'src/pages/en/pricing.mdx');
+    expect(madeWith?.ask).toBeTypeOf('function');
+  });
 
   it('translates one language, or a round of every stale one, and closes the round', async () => {
     write('src/pages/sv/pricing.mdx', page('sv', 'line A ändrad', 'line B', 'line C'));
