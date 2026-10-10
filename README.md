@@ -60,7 +60,7 @@ Three verbs:
 | verb | meaning |
 |---|---|
 | `edit` | this change should propagate to the other languages. The only verb that makes other languages stale. |
-| `fix` | this change is local (a typo, a word choice, restructuring) and should not propagate, but should also not be overwritten. The fix is merged three-way into every sibling's copy, so from their point of view it already happened. |
+| `fix` | this change is local (a typo, a word choice, restructuring) and should not propagate, but should also not be overwritten. The fix is merged three-way into every copy of the page, the fixing language's own included, so from every language's point of view it already happened. |
 | `sync` | this language has now incorporated all changes from other languages. Its copies are refreshed and it is no longer stale. |
 
 The output from the translator is saved with `sync` and then you can touch up the result
@@ -70,7 +70,7 @@ fix overlaps an edit that sibling has not seen yet) is left alone. That language
 **Think of each language as a branch.** The copies a language keeps are the
 repository, as that language knows it. An edit is a commit on the author's
 branch; a sync pulls the siblings' current files onto the target's branch
-and rewrites the target; a fix is cherry-picked onto every other branch.
+and rewrites the target; a fix is cherry-picked onto every branch, its own included.
 Real branches would be unbearable to work with, so the "branches" are
 directories in one tree, and git's diff and merge do the rest.
 
