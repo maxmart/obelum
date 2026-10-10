@@ -62,11 +62,42 @@ documents. A host working on git objects can keep them off disk entirely
 | verb | writes |
 |---|---|
 | `edit L` | L's real file. Nothing else. The only verb that creates staleness. |
-| `fix L` | L's real file, then the change old L → new L merged three-way into every sibling's synced copy of L. A copy the change does not merge into cleanly is left alone, and the whole fix is in that sibling's next diff. |
+| `fix L` | L's real file, then the change old L → new L merged three-way into every synced copy of L, L's own included. A copy the change does not merge into cleanly is left alone, and the whole fix is in that language's next diff. |
 | `sync L` | the same as fix, then L's synced copies of every language overwritten with the real files. A translation is never in a sibling's next diff. |
 | `markAsSynced L` | only the second half of sync. An ops primitive, not a button: it asserts a claim that can be false. |
 
 Each verb ends in exactly one commit naming what it wrote.
+
+## Single source
+
+Most sites translate from one language. Give the document a `source` and
+core runs the same rules on fewer copies: each other language (a target)
+keeps a copy of the source only, and the source keeps none.
+
+```ts
+const session = obelum({ langs: ['en', 'sv', 'no'], source: 'en', file, synced, commit });
+```
+
+- A target is stale when its copy of the source differs from the real
+  source. The source is never stale.
+- A change to the source makes every target stale by itself; a plain
+  commit is an edit.
+- A change to a target goes nowhere, because nothing keeps a copy of it, so
+  it needs no verb. Edit it and commit it.
+- `fix` applies to the source only: a correction no target should
+  translate, merged into every target's copy of the source. On a target it
+  is refused.
+- `sync` applies to targets only: the translation is written, and the
+  target's copy of the source is brought up to date. On the source it is
+  refused.
+- The brief holds the source's diff and names the source (`brief.source`).
+  A target's own changes are not in it: the current target is, and the
+  translator keeps what it does its own way without being told which lines
+  were changed by hand (the evals found that telling it froze those lines).
+
+The peer system is the case where every language keeps a copy of every
+language, itself included. Moving from peers to a single source leaves
+copies nobody reads; `obelum check` lists them.
 
 ## What it does not know
 

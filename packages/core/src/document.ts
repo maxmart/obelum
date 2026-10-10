@@ -41,4 +41,10 @@ export interface Document extends View {
    *  place. MDX: `line => line.trimStart().startsWith('<')`. Markdown: a
    *  heading. Default: git's rule, a line that starts with a letter. */
   anchor?(line: string): boolean;
+  /** Single-source mode: the one language the others are translated from.
+   *  Each other language then keeps a copy of this one only, and is stale
+   *  when it differs from the real file; nothing keeps a copy of the others,
+   *  so a change to one of them goes nowhere and needs no verb. Without it,
+   *  every language is a source for every other (the peer system). */
+  source?: string;
 }

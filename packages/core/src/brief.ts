@@ -23,6 +23,9 @@ export interface LangDiff {
 
 export interface Brief {
   targetLang: string;
+  /** Set in single-source mode: the language the target is translated from.
+   *  The brief then holds that language's diff only. */
+  source?: string;
   /** Current content of the target; empty when it does not exist yet. */
   targetContent: string;
   /** Every language that changed since the target last synced, target

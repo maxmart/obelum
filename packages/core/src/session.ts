@@ -20,6 +20,14 @@
  *   markAsSynced L  only the second half of sync. An ops primitive: it
  *                   asserts a claim that can be false.
  *
+ * Single-source mode (document.source = S): each other language keeps a
+ * copy of S only, and S keeps none. Then a change to a target goes nowhere
+ * (nothing tracks it), so it needs no verb; a committed change to S makes
+ * every target stale by itself. fix applies to S only: a correction to S
+ * that no target should translate. sync applies to targets only. All of it
+ * follows from which languages a language tracks; the peer system is the
+ * case where every language tracks every language, itself included.
+ *
  * The diagonal (L's synced copy of L) against real L is what L edited
  * since its last sync, which a translator is told to keep. A fix is merged
  * into it like any other copy: a fix is part of L's text, not a change to
@@ -80,7 +88,12 @@ export interface Round {
 }
 
 export function obelum(document: Document): Session {
-  const { langs } = document;
+  const { langs, source } = document;
+  if (source !== undefined && !langs.includes(source)) throw new Error(`source "${source}" is not one of the languages (${langs.join(', ')})`);
+  /** The languages a viewer keeps synced copies of. */
+  const tracks = (viewer: string): readonly string[] =>
+    source === undefined ? langs : viewer === source ? [] : [source];
+  const tracked = (viewer: string, viewed: string) => tracks(viewer).includes(viewed);
   const real = (lang: string) => document.file(lang);
   const copyOf = (viewer: string, viewed: string) => document.synced(viewer).file(viewed);
   const read = async (f: File) => (await f.read()) ?? null;
@@ -89,10 +102,11 @@ export function obelum(document: Document): Session {
     if ((await read(f)) !== content) await f.write(content);
   };
 
-  /** Merge the change old → next into every language's synced copy of
-   *  lang: the siblings', and lang's own. */
+  /** Merge the change old → next into every synced copy of lang: the
+   *  siblings', and lang's own (of those that track lang). */
   async function fanout(lang: string, old: string, next: string): Promise<FanoutResult> {
     const result: FanoutResult = { lang, merged: [], conflicted: [] };
+    if (!tracked(lang, lang)) return fanoutToSiblings(lang, old, next, result);
     // lang's own copy takes the change too, so its diff against the real file
     // stays what lang edited since its last sync, with no fix in it. A brief
     // tells the translator to keep that diff; a fix in it would freeze the
@@ -104,8 +118,12 @@ export function obelum(document: Document): Session {
       const m = merge3(own, old, next);
       if (m.clean) await put(copyOf(lang, lang), m.content);
     }
+    return fanoutToSiblings(lang, old, next, result);
+  }
+
+  async function fanoutToSiblings(lang: string, old: string, next: string, result: FanoutResult): Promise<FanoutResult> {
     for (const viewer of langs) {
-      if (viewer === lang) continue;
+      if (viewer === lang || !tracked(viewer, lang)) continue;
       const copy = await read(copyOf(viewer, lang));
       // A missing synced file is an empty base: the sibling never saw this
       // language, and is synced to it now rather than given it as a diff.
@@ -117,9 +135,9 @@ export function obelum(document: Document): Session {
     return result;
   }
 
-  /** Overwrite lang's synced copy of every existing language with the real file. */
+  /** Overwrite lang's synced copy of every language it tracks with the real file. */
   async function snapshot(lang: string): Promise<void> {
-    for (const viewed of langs) {
+    for (const viewed of tracks(lang)) {
       const content = await read(real(viewed));
       if (content !== null) await put(copyOf(lang, viewed), content);
     }
@@ -141,6 +159,9 @@ export function obelum(document: Document): Session {
     },
 
     async fix(lang, content) {
+      if (source !== undefined && lang !== source) {
+        throw new Error(`${lang} is a target: nothing is translated from it, so a change to it needs no fix. Edit it and commit it.`);
+      }
       const old = await writeReal(lang, content);
       const result = await fanout(lang, old, content);
       await document.commit('fix', lang);
@@ -148,6 +169,7 @@ export function obelum(document: Document): Session {
     },
 
     async sync(lang, content) {
+      if (lang === source) throw new Error(`${lang} is the source: the others are synced to it, it is not synced to them.`);
       const old = await writeReal(lang, content);
       const result = await fanout(lang, old, content);
       await snapshot(lang);
@@ -176,6 +198,9 @@ export function obelum(document: Document): Session {
       return {
         sync: (lang, content) => session.sync(lang, content),
         async done() {
+          // With a single source there is nothing to close: the source keeps
+          // no copy of itself, and only targets were behind.
+          if (source !== undefined) return [];
           const still = await behindOn();
           const marked: string[] = [];
           for (const lang of langs) {
@@ -194,7 +219,7 @@ export function obelum(document: Document): Session {
       const out: Record<string, LangStatus> = {};
       for (const viewer of langs) {
         const status: LangStatus = { missing: (await read(real(viewer))) === null, stale: [] };
-        for (const viewed of langs) {
+        for (const viewed of tracks(viewer)) {
           if (viewed === viewer) continue;
           const content = await read(real(viewed));
           if (content === null) continue;
@@ -208,14 +233,14 @@ export function obelum(document: Document): Session {
     async brief(lang) {
       const targetContent = (await read(real(lang))) ?? '';
       const langDiffs: LangDiff[] = [];
-      for (const viewed of langs) {
+      for (const viewed of tracks(lang)) {
         const content = await read(real(viewed));
         if (content === null) continue;
         const base = (await read(copyOf(lang, viewed))) ?? '';
         const diff = unifiedDiff(base, content, document.anchor);
         if (diff) langDiffs.push({ lang: viewed, base, content, diff });
       }
-      return { targetLang: lang, targetContent, langDiffs };
+      return { targetLang: lang, ...(source !== undefined ? { source } : {}), targetContent, langDiffs };
     },
   };
 }
