@@ -2,3 +2,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 .DS_Store
+
+# evals: the API key and what each run produced
+evals/.env
+evals/results/
+
+# evals: the site the report writes
+evals/site/

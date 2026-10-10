@@ -1,0 +1,53 @@
+# Publishes the eval results as a static site at maxmart.github.io/obelum/evals/.
+# Built from the newest committed file in evals/published/, never by running
+# the evals: those cost money and need an API key. To publish a new run, run
+# the evals locally from a clean tree, `npm run publish-results -w evals`, and
+# commit the file it writes.
+#
+# Needs Pages turned on once: repository Settings → Pages → Source: GitHub Actions.
+name: Evals site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'evals/published/**'
+      - 'evals/src/report.ts'
+      - '.github/workflows/evals-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run report -w evals -- --out _site/evals
+      # The project site's root, /obelum/, has nothing else yet.
+      - run: echo '<!doctype html><meta http-equiv="refresh" content="0; url=evals/">' > _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,24 @@
+{
+  "name": "@obelum/evals",
+  "private": true,
+  "description": "Runs the Claude translator against staged documents and checks what comes back. Needs ANTHROPIC_API_KEY; the self-test does not.",
+  "type": "module",
+  "scripts": {
+    "eval": "vite-node src/run.ts --",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "export": "vite-node src/export.ts --",
+    "publish-results": "vite-node src/publish.ts --",
+    "report": "vite-node src/report.ts --"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "diff": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.2",
+    "vite-node": "^3.2.4",
+    "vitest": "^3.2.4"
+  }
+}
