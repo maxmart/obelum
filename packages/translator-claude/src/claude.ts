@@ -19,7 +19,7 @@ import { driveClaudeAgent, applyTextEdit, type ToolReply } from './claude/stream
  *  else — prompt building, the tool loop, the remediation rule — runs for real. */
 export type DriveFn = typeof driveClaudeAgent;
 
-export type DiffStyle = 'hunks' | 'inline' | 'diff';
+export type DiffStyle = 'hunks' | 'inline' | 'diff' | 'none';
 export type Approach = 'batch' | 'check' | 'plan';
 
 export interface ClaudeTranslatorOptions {
@@ -34,7 +34,9 @@ export interface ClaudeTranslatorOptions {
    *  the target last saw it, then a three-line-context diff. 'inline': the
    *  whole file once, as a diff with every line in it, so each change sits
    *  where it happens. 'diff': the three-line-context diff alone, without
-   *  the file around it. The target's own changes are always hunks, since
+   *  the file around it. 'none': no diff and no earlier version, only the
+   *  current page of each language in the brief: a baseline, to measure
+   *  what the diff is worth. The target's own changes are always hunks, since
    *  its current content is shown in full anyway, and a language the target
    *  has never seen is always shown whole. */
   diffStyle?: DiffStyle;
@@ -180,6 +182,7 @@ const SHOWN: Record<DiffStyle, (target: string) => string> = {
   hunks: t => `For each language that changed, you have the content from when ${t} was last synced and a diff showing what changed since then.`,
   inline: t => `For each language that changed, you have its whole file as a diff against the version ${t} was last synced to: a line starting with a space is unchanged, "-" was removed, "+" was added.`,
   diff: t => `For each language that changed, you have a diff showing what changed since ${t} was last synced: a line starting with a space is unchanged context, "-" was removed, "+" was added. The rest of that file is not shown.`,
+  none: t => `You have the current page of each other language and the current ${t} page. You have no diff and no earlier version, so you cannot see what changed: only how the pages compare as they are now.`,
 };
 
 const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
@@ -189,9 +192,15 @@ function langName(code: string): string {
   try { return languageNames.of(code) ?? code; } catch { return code; }
 }
 
+/** The languages shown in full, as a new or never-synced target gets them. */
+function wholePages(params: Brief, style: DiffStyle) {
+  if (style !== 'none') return fullSyncContents(params);
+  return params.targetContent.trim() === '' ? params.langDiffs.filter(d => d.lang !== params.targetLang) : [];
+}
+
 function buildSystemPrompt(params: Brief, instructions: string | undefined, style: DiffStyle, approach: Approach = 'plan'): string {
   const { targetLang, langDiffs } = params;
-  const fullSync = fullSyncContents(params);
+  const fullSync = wholePages(params, style);
 
   // The caller's instructions are law: appended to whichever prompt applies
   // so terminology and format rules stay consistent across documents and
@@ -224,6 +233,8 @@ function buildSystemPrompt(params: Brief, instructions: string | undefined, styl
 Then make the edits, together in one response. ${tool} ${check} ${done}`,
   }[approach];
 
+  if (style === 'none' && !fullSync.length) return noDiffPrompt();
+
   if (fullSync.length) {
     // Nothing to diff against: the target has never been brought up to date.
     const others = fullSync.map(c => named(c.lang)).join(', ');
@@ -242,6 +253,32 @@ ${markup}
 ${params.targetContent.trim() === '' ? `When you are done, say in a sentence or two what you wrote.` : `${asking}
 
 ${editing}`} ${notes}${rulesSection}`;
+  }
+
+  /** No diff: the same job, done by comparing the pages as they are now. */
+  function noDiffPrompt(): string {
+    const pages = langDiffs.filter(d => d.lang !== targetLang).map(d => d.lang);
+    const opening = params.source !== undefined
+      ? `You are keeping the ${named(targetLang)} translation of a document up to date. Its source is ${named(params.source)}: ${T} was translated from it, and has since been corrected and localized by hand. The ${langName(params.source)} page may have changed since ${T} was last brought up to date.`
+      : `You are keeping the ${named(targetLang)} version of a document up to date with its other language versions (${pages.map(named).join(', ')}). The languages are equal peers; none is the original. One or more of them may have changed since ${T} was last brought up to date.`;
+    const plan = `Before you edit, write out briefly: every place where the ${T} page no longer says what the other pages say, quoted from both, with whether you think it is a change waiting to be made in ${T} or a difference on purpose, and why.
+
+Then make the edits, together in one response. ${tool} ${check} ${done}`;
+    return `${opening} ${SHOWN.none(T)}
+
+Your job is to bring the ${T} page up to date with the current ${pages.map(langName).join(' and ')} page${pages.length === 1 ? '' : 's'}: find what ${pages.length === 1 ? 'it says' : 'they say'} that ${T} does not, or says differently, and make the edits a careful editor of the ${T} page would make so that it says the same things.
+
+The versions are not copies of each other. They may differ on purpose: wording, order, examples, local services and links, whole sections that only one language has. Many differences between the pages are deliberate, not changes waiting to be made. Keep all of that. It follows that:
+- A fact that differs may need several edits in ${T}: everywhere ${T} states it, so that ${T} does not contradict itself.
+- A difference may need no edit at all: when ${T} says the same thing in its own words, or leaves something out or adds something on purpose.
+- A difference in order or structure is not a reason to reorder ${T}.
+- Something that only looks like a difference, but says the same thing, stays as it is.
+
+${asking}
+
+${markup}
+
+${approach === 'plan' ? plan : editing} ${notes}${rulesSection}`;
   }
 
   const changedLangs = langDiffs.map(d => d.lang);
@@ -273,7 +310,18 @@ ${editing} ${notes}${rulesSection}`;
 
 function buildUserMessage(params: Brief, style: DiffStyle): string {
   const { targetLang, targetContent, langDiffs } = params;
-  const fullSync = fullSyncContents(params);
+  const fullSync = wholePages(params, style);
+
+  if (style === 'none' && !fullSync.length) {
+    const pages = langDiffs.filter(d => d.lang !== targetLang)
+      .map(d => `## Current ${d.lang} content:\n${d.content}`).join('\n\n');
+    return `${pages}
+
+## Current ${targetLang} content (this is what you'll edit):
+${targetContent}
+
+Bring the ${targetLang} file up to date with the pages above.`;
+  }
 
   if (fullSync.length) {
     // Full sync mode — no diff base

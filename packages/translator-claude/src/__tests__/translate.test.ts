@@ -156,6 +156,17 @@ describe('claude translator', () => {
     expect(captured!.system).not.toContain('equal peers');
   });
 
+  it('gives only the current pages in the none style: no diff, no earlier version', async () => {
+    const { session } = document({ en: 'Intro\nHello\nOutro\n', sv: 'Intro\nHej\nOutro\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Intro\nHello there\nOutro\n');
+    await claude({ apiKey: 'k', drive, diffStyle: 'none' }).run(await session.brief('sv'));
+    expect(captured!.system).toContain('You have no diff and no earlier version');
+    expect(captured!.system).toContain('Your job is to bring the Swedish page up to date with the current English page');
+    expect(captured!.userMessage).toBe('## Current en content:\nIntro\nHello there\nOutro\n\n\n## Current sv content (this is what you\'ll edit):\nIntro\nHej\nOutro\n\n\nBring the sv file up to date with the pages above.');
+    expect(captured!.userMessage).not.toMatch(/^[+-]Hello/m);
+  });
+
   it('asks for notes in English', async () => {
     const { session } = document({ en: 'Hello\n', sv: 'Hej\n' });
     await session.markAsSynced('sv');
