@@ -90,7 +90,7 @@ for (const c of data.cases) {
 
 const index = `
 <h1>Obelum translator evals</h1>
-<p class="meta">${esc(data.model)} · effort ${esc(data.effort)} · ${esc(data.style)} brief · ${esc(data.approach)} approach ·
+<p class="meta">${esc(data.model)} · effort ${esc(data.effort)} · ${esc(data.style)} brief · ${esc(data.approach)} approach ·${data.mode === 'single' ? ' single source ·' : ''}
 commit <a href="https://github.com/maxmart/obelum/tree/${esc(data.commit)}"><code>${esc(data.commit)}</code></a>${data.dirty ? ' (with uncommitted changes)' : ''} ·
 ${esc(data.date.slice(0, 10))}</p>
 <p class="total"><strong>${passed} of ${runs.length} runs passed</strong> (${data.cases.length} cases × ${data.repeat}) ·

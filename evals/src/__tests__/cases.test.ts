@@ -3,7 +3,7 @@
  * to do, its reference answer passes every check, and leaving the target as it
  * was fails at least one, so no check passes by default.
  */
-import { stage } from '../case.js';
+import { sourceOf, stage } from '../case.js';
 import { cases } from '../cases/index.js';
 
 describe.each(cases.map(c => [c.id, c] as const))('%s', (_, c) => {
@@ -29,4 +29,20 @@ describe.each(cases.map(c => [c.id, c] as const))('%s', (_, c) => {
 
 it('ids are unique', () => {
   expect(new Set(cases.map(c => c.id)).size).toBe(cases.length);
+});
+
+describe.each(cases.filter(c => sourceOf(c) !== null).map(c => [c.id, c] as const))('%s, single source', (_, c) => {
+  it('stages a brief with something to do, from the source only', async () => {
+    const { session } = await stage(c, 'merged', 'single');
+    const brief = await session.brief(c.target);
+    expect(brief.source).toBe(sourceOf(c));
+    expect(brief.langDiffs.map(d => d.lang)).toEqual([sourceOf(c)]);
+  });
+
+  it('passes every check with its reference', async () => {
+    const { session } = await stage(c, 'merged', 'single');
+    const before = (await session.brief(c.target)).targetContent;
+    const run = { questions: c.referenceQuestions ?? [] };
+    expect(c.checks.filter(ch => !ch.ok(c.reference, before, run)).map(ch => ch.label)).toEqual([]);
+  });
 });

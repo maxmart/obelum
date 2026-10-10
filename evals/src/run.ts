@@ -16,8 +16,10 @@
  * (how a fix step treats the fixer's own copy; see FixMode), --repeat <n>,
  * --concurrency <n>, --model <id>, --effort <level>, --judge,
  * --judge-model <id>, --verbose (show the diff of every failed result),
- * --dry (print each prompt and stop; no key, no API call). Defaults are the
- * translator's own: hunks, plan, merged.
+ * --mode peers,single (single runs each case whose steps change one language
+ * other than the target in single-source mode, with that language as the
+ * source; the others are skipped), --dry (print each prompt and stop; no key,
+ * no API call). Defaults are the translator's own: hunks, plan, merged, peers.
  *
  * The key comes from ANTHROPIC_API_KEY, or from evals/.env.
  */
@@ -28,7 +30,7 @@ import { parseArgs } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
 import { createPatch } from 'diff';
 import { claude, driveClaudeAgent, type Approach, type DiffStyle, type DriveFn, type ToolReply, type TranslationEvent } from '@obelum/translator-claude';
-import { stage, type Case, type FixMode } from './case.js';
+import { sourceOf, stage, type Case, type FixMode, type Mode } from './case.js';
 import { cases as allCases } from './cases/index.js';
 import { judge, judgeUsage, type Verdict } from './judge.js';
 import { request, runClaudeCode } from './claude-code.js';
@@ -45,6 +47,7 @@ const { values: args } = parseArgs({
     style: { type: 'string', default: 'hunks' },
     fix: { type: 'string', default: 'merged' },
     approach: { type: 'string', default: 'plan' },
+    mode: { type: 'string', default: 'peers' },
     repeat: { type: 'string', default: '1' },
     concurrency: { type: 'string', default: '4' },
     model: { type: 'string' },
@@ -66,27 +69,33 @@ const fixModes = args.fix.split(',').map(s => s.trim()) as FixMode[];
 for (const f of fixModes) if (f !== 'merged' && f !== 'kept') throw new Error(`unknown fix mode: ${f}`);
 const approaches = args.approach.split(',').map(s => s.trim()) as Approach[];
 for (const a of approaches) if (!['batch', 'check', 'plan'].includes(a)) throw new Error(`unknown approach: ${a}`);
+const modes = args.mode.split(',').map(s => s.trim()) as Mode[];
+for (const m of modes) if (m !== 'peers' && m !== 'single') throw new Error(`unknown mode: ${m}`);
 
-/** One column of the table: a diff style (or Claude Code), a fix mode and
- *  an approach. Its label names only what varies between the columns. */
-interface Variant { style: Style; ccModel?: string; fix: FixMode; approach: Approach; label: string }
-const variants: Variant[] = styles.flatMap(s => fixModes.flatMap(fix => approaches.map(approach => ({
+/** One column of the table: a diff style (or Claude Code), a fix mode, an
+ *  approach and a mode. Its label names only what varies between columns. */
+interface Variant { style: Style; ccModel?: string; fix: FixMode; approach: Approach; mode: Mode; label: string }
+const variants: Variant[] = styles.flatMap(s => fixModes.flatMap(fix => approaches.flatMap(approach => modes.map(mode => ({
   style: (s.startsWith('cc') ? 'cc' : s) as Style,
   ccModel: s.startsWith('cc:') ? s.slice(3) : undefined,
-  fix, approach,
+  fix, approach, mode,
   label: [
-    styles.length > 1 || (fixModes.length === 1 && approaches.length === 1) ? s : '',
+    styles.length > 1 || (fixModes.length === 1 && approaches.length === 1 && modes.length === 1) ? s : '',
     fixModes.length > 1 ? fix : '',
     approaches.length > 1 ? approach : '',
+    modes.length > 1 ? mode : '',
   ].filter(Boolean).join('/'),
-}))));
+})))));
+/** Single-source mode applies to a case only when one language changes. */
+const applies = (c: Case, v: Variant) => v.mode === 'peers' || sourceOf(c) !== null;
 const repeat = Number(args.repeat);
 const cases =args.case?.length ? allCases.filter(c => args.case!.some(f => c.id.includes(f))) : allCases;
 if (!cases.length) { console.error('No case matches.'); process.exit(1); }
 
 if (args.dry) {
   for (const c of cases) for (const v of variants) {
-    const { session } = await stage(c, v.fix);
+    if (!applies(c, v)) continue;
+    const { session } = await stage(c, v.fix, v.mode);
     if (v.style === 'cc') {
       console.log(`\n━━ ${c.id} (${v.label}) ━━\n${request(c, await session.brief(c.target))}`);
       continue;
@@ -115,6 +124,7 @@ interface RunResult {
   variant: string;
   style: Style;
   fix: FixMode;
+  mode: Mode;
   rep: number;
   complete: boolean;
   /** Every check passed on a complete result. The judge is reported apart. */
@@ -157,13 +167,13 @@ async function score(c: Case, brief: Awaited<ReturnType<Awaited<ReturnType<typeo
 
 async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
   const { style } = v;
-  const { session, store } = await stage(c, v.fix);
+  const { session, store } = await stage(c, v.fix, v.mode);
   const brief = await session.brief(c.target);
   if (style === 'cc') {
     const r = await runClaudeCode(c, brief, store, { model: v.ccModel, effort: args.effort, mode: args['cc-mode'], bash: args['cc-bash'] });
     const { checks, verdict } = await score(c, brief, r.output);
     return {
-      case: c.id, variant: v.label, style, fix: v.fix, rep, complete: r.complete,
+      case: c.id, variant: v.label, style, fix: v.fix, mode: v.mode, rep, complete: r.complete,
       pass: r.complete && checks.every(ch => ch.ok),
       checks, judge: verdict,
       edits: 0, editFailures: 0,
@@ -215,7 +225,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
   const { checks, verdict } = await score(c, brief, output, questions.map(q => [q.question, ...q.options].join(' ')));
   const errors = events.flatMap(e => (e.type === 'error' ? [e.error] : []));
   return {
-    case: c.id, variant: v.label, style, fix: v.fix, rep, complete,
+    case: c.id, variant: v.label, style, fix: v.fix, mode: v.mode, rep, complete,
     pass: complete && checks.every(ch => ch.ok),
     checks, judge: verdict,
     edits: events.filter(e => e.type === 'edit').length,
@@ -253,7 +263,7 @@ async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>
 const git = (cmd: string) => { try { return execSync(`git ${cmd}`, { encoding: 'utf8' }).trim(); } catch { return ''; } };
 const gitAtStart = { commit: git('rev-parse --short HEAD'), dirty: git('status --porcelain') !== '' };
 
-const jobs = cases.flatMap(c => variants.flatMap(v => Array.from({ length: repeat }, (_, rep) => ({ c, v, rep }))));
+const jobs = cases.flatMap(c => variants.filter(v => applies(c, v)).flatMap(v => Array.from({ length: repeat }, (_, rep) => ({ c, v, rep }))));
 console.log(`${cases.length} cases × ${variants.map(v => v.label).join(', ')} × ${repeat} = ${jobs.length} runs${args.model ? ` on ${args.model}` : ''}${args.judge ? `, judged by ${args['judge-model']}` : ''}\n`);
 
 const labelWidth = Math.max(...variants.map(v => v.label.length));
@@ -279,7 +289,7 @@ console.log(`\n${'case'.padEnd(width)}${variants.map(v => cell(v.label)).join(''
 for (const c of cases) {
   const row = variants.map(v => {
     const rs = results.filter(r => r.case === c.id && r.variant === v.label);
-    return cell(`${rs.filter(r => r.pass).length}/${rs.length}`);
+    return cell(rs.length ? `${rs.filter(r => r.pass).length}/${rs.length}` : '–');
   });
   console.log(`${c.id.padEnd(width)}${row.join('')}`);
 }

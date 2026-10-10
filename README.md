@@ -84,6 +84,10 @@ directories in one tree, and git's diff and merge do the rest.
   carry changes, not content.
 - **Correct without propagating.** A typo fix does not trigger three
   re-translations.
+- **Or translate from one language.** With a `source` set, each other
+  language keeps a copy of that one only. Targets are edited freely and
+  nothing spreads from them; a fix on the source is a correction no target
+  translates.
 - **See what is behind what.** Per document, which languages are stale and
   on whom.
 - **Use any translator.** The brief is plain data: current content, base,

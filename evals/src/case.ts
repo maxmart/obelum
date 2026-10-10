@@ -58,8 +58,28 @@ export interface Case {
  */
 export type FixMode = 'merged' | 'kept';
 
-/** The case's document, with every step applied. */
-export async function stage(c: Case, fixMode: FixMode = 'merged'): Promise<{ session: Session; store: Map<string, string> }> {
+/** 'peers': every language a source for every other (core without a
+ *  source). 'single': core in single-source mode; see sourceOf. */
+export type Mode = 'peers' | 'single';
+
+/**
+ * The source a case has in single-source mode: the one language other than
+ * the target that its steps change (or, with no steps, the one other
+ * language there is). Null when that is not one language, as when two
+ * siblings both changed: such a case has no single-source form.
+ */
+export function sourceOf(c: Case): string | null {
+  const changed = [...new Set(c.steps.map(s => s.lang).filter(l => l !== c.target))];
+  if (changed.length === 1) return changed[0];
+  const others = Object.keys(c.files).filter(l => l !== c.target);
+  return changed.length === 0 && others.length === 1 ? others[0] : null;
+}
+
+/** The case's document, with every step applied. In single-source mode a
+ *  fix on the target is a plain edit: a target's changes go nowhere. */
+export async function stage(c: Case, fixMode: FixMode = 'merged', mode: Mode = 'peers'): Promise<{ session: Session; store: Map<string, string> }> {
+  const source = mode === 'single' ? sourceOf(c) : null;
+  if (mode === 'single' && source === null) throw new Error(`${c.id} has no single-source form`);
   const store = new Map<string, string>(Object.entries(c.files));
   const file = (path: string) => ({
     read: () => store.get(path) ?? null,
@@ -67,6 +87,7 @@ export async function stage(c: Case, fixMode: FixMode = 'merged'): Promise<{ ses
   });
   const session = obelum({
     langs: c.langs,
+    ...(source !== null ? { source } : {}),
     file: lang => file(lang),
     synced: viewer => ({ file: lang => file(`.obelum/${viewer}/${lang}`) }),
     commit: () => {},
@@ -75,8 +96,9 @@ export async function stage(c: Case, fixMode: FixMode = 'merged'): Promise<{ ses
   for (const step of c.steps) {
     const own = `.obelum/${step.lang}/${step.lang}`;
     const before = store.get(own);
-    await session[step.verb](step.lang, step.content);
-    if (step.verb === 'fix' && fixMode === 'kept' && before !== undefined) store.set(own, before);
+    const verb = source !== null && step.verb === 'fix' && step.lang !== source ? 'edit' : step.verb;
+    await session[verb](step.lang, step.content);
+    if (verb === 'fix' && fixMode === 'kept' && before !== undefined) store.set(own, before);
   }
   return { session, store };
 }

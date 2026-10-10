@@ -13,7 +13,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stage, type FixMode } from './case.js';
+import { stage, type FixMode, type Mode } from './case.js';
 import { cases } from './cases/index.js';
 import { dollars, TRANSLATOR_DEFAULT, TRANSLATOR_EFFORT } from './prices.js';
 
@@ -64,6 +64,8 @@ export interface Published {
   style: string;
   approach: string;
   fix: string;
+  /** 'peers', or 'single' for single-source mode. */
+  mode: string;
   repeat: number;
   cases: PublishedCase[];
 }
@@ -89,6 +91,7 @@ if (head !== raw.commit) console.warn(`warning: the run was made at ${raw.commit
 const first = raw.results[0];
 const model: string = raw.model ?? raw.args.model ?? TRANSLATOR_DEFAULT;
 const fix = first.fix as FixMode;
+const mode = (first.mode ?? 'peers') as Mode;
 // The results file's name is its time, with ':' and '.' made '-'.
 const date = path.basename(file, '.json').replace(/T(\d\d)-(\d\d)-(\d\d)-(\d+)Z$/, 'T$1:$2:$3.$4Z');
 
@@ -102,6 +105,7 @@ const published: Published = {
   style: first.style,
   approach: raw.args.approach ?? 'plan',
   fix,
+  mode,
   repeat: Number(raw.args.repeat ?? 1),
   cases: [],
 };
@@ -109,7 +113,7 @@ const published: Published = {
 for (const c of cases) {
   const runs = raw.results.filter((r: { case: string }) => r.case === c.id);
   if (!runs.length) continue;
-  const { session } = await stage(c, fix);
+  const { session } = await stage(c, fix, mode);
   const brief = await session.brief(c.target);
   const lf = (s: string) => s.replace(/\r\n/g, '\n').replace(/\n$/, '');
   published.cases.push({
@@ -147,7 +151,7 @@ for (const c of cases) {
   });
 }
 
-const out = here(`../published/${date.slice(0, 10)}-${model}.json`);
+const out = here(`../published/${date.slice(0, 10)}-${model}${mode === 'single' ? '-single' : ''}.json`);
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, JSON.stringify(published, null, 1) + '\n');
 const runs = published.cases.flatMap(c => c.runs);
