@@ -35,7 +35,9 @@ const SYSTEM: Record<string, string> = {
 const describe = (v: PublishedVariant) =>
   v.style === 'nodiff'
     ? 'baseline: the current pages only, no diff and no earlier version'
-    : `${v.style}: the page as the target last saw it, the diff since, and the current target; ${v.approach} approach`;
+    : v.style === 'diff'
+      ? `diff: the diff and the current target, without the source page; ${v.approach} approach`
+      : `${v.style}: the page as the target last saw it, the diff since, and the current target; ${v.approach} approach`;
 
 function diffHtml(text: string): string {
   return `<pre class="diff">${text.split('\n').map(l => {
@@ -157,6 +159,11 @@ glossary, given only the current page of each language: no diff and no earlier v
 prompt with what depends on the diff rewritten, and asks it to bring the target up to date with the current pages.
 The diff prompt was chosen among several versions by running these cases. The baseline prompt was written once
 and not changed, so the comparison favours the diff version. A case with no target page yet is the same in both.</p>
+</section>` : ''}
+${variants.some(v => v.style === 'diff') ? `<section class="about">
+<p><strong>About the diff column.</strong> The <em>diff</em> column is the translator given the diff and the current
+target only, without the source page. It shows what the source page adds to the diff: a diff shows what changed,
+not what the page no longer says anywhere.</p>
 </section>` : ''}
 <h2>By group</h2>
 ${groupTable}
