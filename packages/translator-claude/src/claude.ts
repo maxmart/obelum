@@ -55,6 +55,12 @@ export interface ClaudeTranslatorOptions {
    *  Without it, every question is still a `question` event, for the host
    *  to log, and the model is told to leave that content as it is. */
   ask?: (question: Question) => Promise<string | null>;
+  /** Gives the model two more tools, search and read, over the current page
+   *  of each other language in the brief. Meant for diffStyle 'diff', where
+   *  the page around the diff is not shown: the model can then find out what
+   *  a diff cannot say, such as whether something a change removed is still
+   *  mentioned anywhere. Off by default. */
+  lookup?: boolean;
 }
 
 export interface Question {
@@ -70,6 +76,8 @@ export type TranslationEvent =
   | { type: 'reasoning'; text: string }
   | { type: 'edit'; edit: { old_string: string; new_string: string } }
   | { type: 'error'; error: string }
+  /** The model looked something up in another language's current page. */
+  | { type: 'lookup'; tool: 'search' | 'read'; lang: string; query: string; found: number }
   /** The model asked something the documents could not settle. `answer` is
    *  null when nobody answered: the question is then for a person to read
    *  later, and the content it is about was left as it was. */
@@ -161,6 +169,69 @@ const ASK_TOOL = {
   },
 };
 
+const SEARCH_TOOL = {
+  name: 'search',
+  description:
+    'Find text in the current page of another language, ignoring case. Returns every line that contains it, with its line number, or says that the page does not contain it. Use it to learn what a diff cannot show: whether something is still mentioned anywhere on the page.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      text: { type: 'string' as const, description: 'The text to find, in the language of the page searched' },
+      lang: { type: 'string' as const, description: 'The language code of the page. Optional when only one other language is in play.' },
+    },
+    required: ['text'],
+  },
+};
+
+const READ_TOOL = {
+  name: 'read',
+  description:
+    'Read lines of the current page of another language, numbered. Give a range to read around a search result or a changed line; without one you get the start of the page. At most 120 lines per call.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      lang: { type: 'string' as const, description: 'The language code of the page. Optional when only one other language is in play.' },
+      from: { type: 'number' as const, description: 'First line, counted from 1' },
+      to: { type: 'number' as const, description: 'Last line' },
+    },
+    required: [],
+  },
+};
+
+const READ_MAX = 120;
+const SEARCH_MAX = 40;
+
+/** The pages search and read see: the current content of every language in
+ *  the brief but the target, which the model has in full already. */
+function lookupPages(params: Brief): Map<string, string[]> {
+  return new Map(params.langDiffs.filter(d => d.lang !== params.targetLang)
+    .map(d => [d.lang, d.content.replace(/\r\n/g, '\n').split('\n')]));
+}
+
+/** Which page a lookup means: the one named, or the only one there is. */
+function pageOf(pages: Map<string, string[]>, lang: unknown): { lang: string; lines: string[] } | string {
+  const known = [...pages.keys()];
+  if (typeof lang === 'string' && pages.has(lang)) return { lang, lines: pages.get(lang)! };
+  if (lang === undefined && known.length === 1) return { lang: known[0], lines: pages.get(known[0])! };
+  return `Give lang as one of: ${known.join(', ')}.`;
+}
+
+function search(lang: string, lines: string[], text: string): { content: string; found: number } {
+  const needle = text.toLowerCase();
+  const hits = lines.flatMap((l, i) => (l.toLowerCase().includes(needle) ? [`${i + 1}\t${l}`] : []));
+  if (!hits.length) return { found: 0, content: `The current ${lang} page (${lines.length} lines) does not contain "${text}" anywhere.` };
+  const shown = hits.slice(0, SEARCH_MAX);
+  return { found: hits.length, content: `"${text}" is on ${hits.length} line${hits.length === 1 ? '' : 's'} of the current ${lang} page:\n${shown.join('\n')}${hits.length > shown.length ? `\n… and ${hits.length - shown.length} more` : ''}` };
+}
+
+function read(lang: string, lines: string[], from: unknown, to: unknown): { content: string; found: number } {
+  const first = Math.max(1, Number.isInteger(from) ? (from as number) : 1);
+  const last = Math.min(lines.length, Number.isInteger(to) ? (to as number) : first + READ_MAX - 1, first + READ_MAX - 1);
+  if (first > lines.length) return { found: 0, content: `The current ${lang} page has ${lines.length} lines.` };
+  const body = lines.slice(first - 1, last).map((l, i) => `${first + i}\t${l}`).join('\n');
+  return { found: last - first + 1, content: `Lines ${first}–${last} of ${lines.length}, current ${lang} page:\n${body}` };
+}
+
 /** A language the target never saw: no base, the whole file is the diff. */
 const unseen = (d: { base: string }) => d.base === '';
 
@@ -198,7 +269,7 @@ function wholePages(params: Brief, style: DiffStyle) {
   return params.targetContent.trim() === '' ? params.langDiffs.filter(d => d.lang !== params.targetLang) : [];
 }
 
-function buildSystemPrompt(params: Brief, instructions: string | undefined, style: DiffStyle, approach: Approach = 'plan'): string {
+function buildSystemPrompt(params: Brief, instructions: string | undefined, style: DiffStyle, approach: Approach = 'plan', lookup = false): string {
   const { targetLang, langDiffs } = params;
   const fullSync = wholePages(params, style);
 
@@ -291,7 +362,13 @@ ${approach === 'plan' ? plan : editing} ${notes}${rulesSection}`;
     ? `You are keeping the ${named(targetLang)} translation of a document up to date. Its source is ${named(params.source)}: ${T} was translated from it, and has since been corrected and localized by hand. Since ${T} was last brought up to date, someone changed the ${langName(params.source)} page.`
     : `You are keeping the ${named(targetLang)} version of a document up to date with its other language versions. The languages are equal peers; none is the original. Since ${T} was last brought up to date, ${others.length ? `someone changed ${others.map(named).join(' and ')}` : `only ${T} itself has changed`}.`;
 
-  return `${opening} ${SHOWN[style](T)}${targetChanged ? ` ${T} has been edited itself since then too; those edits are shown as well, and they are deliberate: keep them.` : ''}
+  // Said as what the tools are for, not as a step to take: most changes
+  // need no lookup, and a rule to search first costs a turn every time.
+  const looking = lookup
+    ? ` You can look at ${others.length === 1 ? `the current ${langName(others[0])} page` : 'the current page of each of those languages'} with search and read. Use them when what to do in ${T} depends on what that page says outside the diff: above all, whether something a change removed or renamed is still mentioned anywhere on it.`
+    : '';
+
+  return `${opening} ${SHOWN[style](T)}${looking}${targetChanged ? ` ${T} has been edited itself since then too; those edits are shown as well, and they are deliberate: keep them.` : ''}
 
 Your job is not to translate the diff. It is to understand each change (what it says, and why it was likely made: a new fact, a correction, a rewording, a removal, a reordering) and then ask: if the person who made it had been editing the ${T} version instead, what would they have changed there? Make those changes.
 
@@ -393,11 +470,14 @@ export async function* translateWithClaude(
   const attempted = new Remediation();
 
   const approach = options.approach ?? 'plan';
+  // Nothing to look up when the pages are shown whole anyway.
+  const pages = lookupPages(params);
+  const lookup = !!options.lookup && pages.size > 0 && !wholePages(params, options.diffStyle ?? 'hunks').length && options.diffStyle !== 'none';
   const driver = (options.drive ?? driveClaudeAgent)({
     apiKey: options.apiKey,
-    system: buildSystemPrompt(params, options.instructions, options.diffStyle ?? 'hunks', approach),
+    system: buildSystemPrompt(params, options.instructions, options.diffStyle ?? 'hunks', approach, lookup),
     userMessage: buildUserMessage(params, options.diffStyle ?? 'hunks'),
-    tools: [EDIT_FILE_TOOL, WRITE_FILE_TOOL, ASK_TOOL],
+    tools: [EDIT_FILE_TOOL, WRITE_FILE_TOOL, ASK_TOOL, ...(lookup ? [SEARCH_TOOL, READ_TOOL] : [])],
     effort: 'medium',
     maxTurns: 25,
   });
@@ -433,6 +513,20 @@ export async function* translateWithClaude(
           reply = { content: answer
             ? `The answer: ${answer}`
             : 'No one can answer now. Your question is recorded for a person to read. Leave the content it is about as it is, make the rest of the edits, and name the open question in your summary.' };
+        } else if (lookup && (ev.name === 'search' || ev.name === 'read')) {
+          // A look changes nothing: neither a success nor a failure.
+          const page = pageOf(pages, ev.input.lang);
+          if (typeof page === 'string') { reply = { content: page, isError: true }; break; }
+          if (ev.name === 'search' && (typeof ev.input.text !== 'string' || !ev.input.text.trim())) {
+            reply = { content: 'search needs a `text` string.', isError: true };
+            break;
+          }
+          const result = ev.name === 'search'
+            ? search(page.lang, page.lines, (ev.input.text as string).trim())
+            : read(page.lang, page.lines, ev.input.from, ev.input.to);
+          const query = ev.name === 'search' ? (ev.input.text as string).trim() : `${ev.input.from ?? 1}–${ev.input.to ?? ''}`;
+          yield { type: 'lookup', tool: ev.name, lang: page.lang, query, found: result.found };
+          reply = { content: result.content };
         } else if (ev.name === 'write_file') {
           if (typeof ev.input.content !== 'string') {
             attempted.failed(ev.turn);
@@ -470,7 +564,7 @@ export async function* translateWithClaude(
           // An unknown tool was still an attempted change; treat it as a
           // failure that a later informed action must answer.
           attempted.failed(ev.turn);
-          reply = { content: `Unknown tool: ${ev.name}. Use edit_file, write_file or ask.`, isError: true };
+          reply = { content: `Unknown tool: ${ev.name}. Use edit_file, write_file or ask${lookup ? `, or search and read to look` : ``}.`, isError: true };
         }
         break;
       case 'stop':

@@ -35,6 +35,8 @@ const SYSTEM: Record<string, string> = {
 const describe = (v: PublishedVariant) =>
   v.style === 'nodiff'
     ? 'baseline: the current pages only, no diff and no earlier version'
+    : v.style === 'difflook'
+      ? `difflook: the diff and the current target, without the source page, and two tools to search and read the current source page; ${v.approach} approach`
     : v.style === 'diff'
       ? `diff: the diff and the current target, without the source page; ${v.approach} approach`
       : `${v.style}: the page as the target last saw it, the diff since, and the current target; ${v.approach} approach`;

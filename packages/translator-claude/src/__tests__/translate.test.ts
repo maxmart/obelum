@@ -144,6 +144,44 @@ describe('claude translator', () => {
     expect(events.find(e => e.type === 'question')).toMatchObject({ answer: null });
   });
 
+  it('lets the model search and read the current page of another language when lookup is on', async () => {
+    const replies: (string | undefined)[] = [];
+    const recording: DriveFn = async function* (opts) {
+      captured = opts;
+      for (const ev of script(opts)) replies.push((yield ev)?.content);
+    };
+    script = () => [
+      { type: 'tool_use', id: '1', name: 'search', input: { text: 'klarna' }, turn: 0 },
+      { type: 'tool_use', id: '2', name: 'search', input: { text: 'card' }, turn: 0 },
+      { type: 'tool_use', id: '3', name: 'read', input: { from: 2, to: 3 }, turn: 0 },
+      { type: 'tool_use', id: '4', name: 'search', input: { text: 'x', lang: 'de' }, turn: 0 },
+      { type: 'stop', reason: 'end_turn' },
+    ];
+    const { session } = document({ en: 'Intro\nPay by card or Klarna.\nOutro\n', sv: 'Intro\nBetala med kort eller Klarna.\nSlut\n' });
+    await session.markAsSynced('sv');
+    await session.edit('en', 'Intro\nPay by card.\nOutro\n');
+    const brief = await session.brief('sv');
+
+    const events: TranslationEvent[] = [];
+    const looking = claude({ apiKey: 'k', drive: recording, diffStyle: 'diff', lookup: true });
+    expect(await looking.run(brief, { onEvent: e => events.push(e) })).toBe('Intro\nBetala med kort eller Klarna.\nSlut\n');   // a look is no failure
+    expect(captured!.tools.map(t => t.name)).toEqual(['edit_file', 'write_file', 'ask', 'search', 'read']);
+    expect(captured!.system).toContain('You can look at the current English page with search and read');
+    expect(replies[0]).toBe('The current en page (4 lines) does not contain "klarna" anywhere.');
+    expect(replies[1]).toBe('"card" is on 1 line of the current en page:\n2\tPay by card.');
+    expect(replies[2]).toBe('Lines 2–3 of 4, current en page:\n2\tPay by card.\n3\tOutro');
+    expect(replies[3]).toBe('Give lang as one of: en.');
+    expect(events.filter(e => e.type === 'lookup')).toMatchObject([
+      { tool: 'search', lang: 'en', query: 'klarna', found: 0 },
+      { tool: 'search', lang: 'en', query: 'card', found: 1 },
+      { tool: 'read', lang: 'en', found: 2 },
+    ]);
+
+    await claude({ apiKey: 'k', drive: recording, diffStyle: 'diff' }).run(brief);
+    expect(captured!.tools.map(t => t.name)).toEqual(['edit_file', 'write_file', 'ask']);
+    expect(captured!.system).not.toContain('search and read');
+  });
+
   it('says who the target is translated from in single-source mode', async () => {
     const store = new Map<string, string>([['en', 'Hello\n'], ['sv', 'Hej\n']]);
     const file = (p: string) => ({ read: () => store.get(p) ?? null, write: (c: string) => { store.set(p, c); } });

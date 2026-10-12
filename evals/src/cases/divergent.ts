@@ -353,6 +353,25 @@ function harder(): Case[] {
         ['SMS-utskick och incheckning – och betalning med Klarna direkt i appen.', 'SMS-utskick och incheckning.']),
     },
     {
+      id: 'divergent/en-drops-klarna-from-intro-only',
+      about: 'The twin of en-drops-klarna-everywhere: en shortens the intro so that it no longer lists payment methods, and still offers Klarna in the payments row. Swedish shortens its intro too, and keeps every other Klarna, the one in its own features sentence included. The diff looks much the same as when Klarna is dropped for good; only the rest of the English page tells them apart.',
+      langs, files: klarna.files, target: 'sv',
+      steps: [{
+        verb: 'edit', lang: 'en',
+        content: change(klarna.files.en, ['From registration and payment by card, Klarna or Swish, draws', 'From registration, payment, draws']),
+      }],
+      checks: [
+        lacks('Klarna eller Swish, lottning'),
+        count(/Klarna/g, 4),
+        keeps('title="Ta enkelt betalt med kort, Klarna eller Swish"'),
+        keeps('betala med kort eller Klarna vilket'),
+        keeps('SMS-utskick och incheckning – och betalning med Klarna direkt i appen.'),
+        keeps(sv.streaming.trimEnd()),
+        onlyTouches(['id="sect-e5f6a7b8"', 'contained={true}']),
+      ],
+      reference: change(klarna.files.sv, ['Från anmälning och betalning med kort, Klarna eller Swish, lottning', 'Från anmälning, betallösning, lottning']),
+    },
+    {
       id: 'divergent/never-synced-keeps-own',
       about: 'Swedish has never synced (first adoption): its own order, a Globex Live row only it has, and no East Africa row. It gains the East Africa row and keeps everything of its own.',
       langs, files: { en: home.en, sv: svOwn }, target: 'sv', neverSynced: ['sv'],

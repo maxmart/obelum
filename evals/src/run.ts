@@ -37,7 +37,7 @@ import { judge, judgeUsage, type Verdict } from './judge.js';
 import { request, runClaudeCode } from './claude-code.js';
 import { dollars, TRANSLATOR_DEFAULT, TRANSLATOR_EFFORT } from './prices.js';
 
-type Style = DiffStyle | 'nodiff' | 'cc';
+type Style = DiffStyle | 'nodiff' | 'difflook' | 'cc';
 
 /**
  * The baseline's brief: the current page of every other language, changed
@@ -50,7 +50,9 @@ function currentPages(brief: Brief, store: Map<string, string>, c: Case): Brief 
     .map(l => ({ lang: l, base: store.get(l)!, content: store.get(l)!, diff: '' }));
   return { targetLang: brief.targetLang, ...(brief.source ? { source: brief.source } : {}), targetContent: brief.targetContent, langDiffs };
 }
-const diffStyleOf = (s: Style): DiffStyle => (s === 'nodiff' ? 'none' : (s as DiffStyle));
+const diffStyleOf = (s: Style): DiffStyle => (s === 'nodiff' ? 'none' : s === 'difflook' ? 'diff' : (s as DiffStyle));
+/** difflook: the diff alone, with search and read over the current pages. */
+const lookupOf = (s: Style) => s === 'difflook';
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
@@ -78,7 +80,7 @@ const { values: args } = parseArgs({
 // A style is one of the translator's diff styles, or `cc` / `cc:<model>`:
 // Claude Code itself (claude -p), asked in plain words; see claude-code.ts.
 const styles = args.style.split(',').map(s => s.trim());
-for (const s of styles) if (!['hunks', 'inline', 'diff', 'nodiff'].includes(s) && !/^cc(:.+)?$/.test(s)) throw new Error(`unknown style: ${s}`);
+for (const s of styles) if (!['hunks', 'inline', 'diff', 'nodiff', 'difflook'].includes(s) && !/^cc(:.+)?$/.test(s)) throw new Error(`unknown style: ${s}`);
 const fixModes = args.fix.split(',').map(s => s.trim()) as FixMode[];
 for (const f of fixModes) if (f !== 'merged' && f !== 'kept') throw new Error(`unknown fix mode: ${f}`);
 const approaches = args.approach.split(',').map(s => s.trim()) as Approach[];
@@ -119,7 +121,7 @@ if (args.dry) {
       yield { type: 'stop', reason: 'end_turn' };
     };
     const b = await session.brief(c.target);
-    await claude({ apiKey: 'dry', instructions: c.instructions, diffStyle: diffStyleOf(v.style), approach: v.approach, drive: probe }).run(v.style === 'nodiff' ? currentPages(b, store, c) : b);
+    await claude({ apiKey: 'dry', instructions: c.instructions, diffStyle: diffStyleOf(v.style), lookup: lookupOf(v.style), approach: v.approach, drive: probe }).run(v.style === 'nodiff' ? currentPages(b, store, c) : b);
   }
   process.exit(0);
 }
@@ -228,7 +230,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
       }
     })();
   };
-  const translator = claude({ apiKey: apiKey!, instructions: c.instructions, diffStyle: diffStyleOf(style), approach: v.approach, drive });
+  const translator = claude({ apiKey: apiKey!, instructions: c.instructions, diffStyle: diffStyleOf(style), lookup: lookupOf(style), approach: v.approach, drive });
 
   const started = Date.now();
   const events: TranslationEvent[] = [];
