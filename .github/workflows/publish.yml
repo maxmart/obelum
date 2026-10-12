@@ -2,12 +2,16 @@
 # release tag is pushed (v1.2.3). Uses npm trusted publishing: no token in
 # the repo, the OIDC identity of this workflow is what npm trusts. Set it up
 # once per package at npmjs.com → package → Settings → Trusted publisher
-# (repository maxmart/obelum, workflow publish.yml).
+# (repository maxmart/obelum, workflow publish.yml), allowed to publish
+# directly. Trusted publishing needs npm 11.5.1 or later; older npm publishes
+# without credentials and the registry answers 404. Run it by hand (Actions →
+# Publish → Run workflow) to publish what a failed run left behind.
 name: Publish
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -21,6 +25,7 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - name: publish what is new
