@@ -155,8 +155,8 @@ ${hasBaseline ? `<section class="caveat">
 <p><strong>About the baseline.</strong> The <em>nodiff</em> column is the same translator, model, effort, tools and
 glossary, given only the current page of each language: no diff and no earlier version. Its prompt is the diff
 prompt with what depends on the diff rewritten, and asks it to bring the target up to date with the current pages.
-The diff prompt was tuned on these cases and the baseline prompt was not, so the comparison favours the diff
-version. A case with no target page yet is the same in both.</p>
+The diff prompt was chosen among several versions by running these cases. The baseline prompt was written once
+and not changed, so the comparison favours the diff version. A case with no target page yet is the same in both.</p>
 </section>` : ''}
 <h2>By group</h2>
 ${groupTable}

@@ -116,5 +116,5 @@ given only the current page of each language (every language, changed or
 not): no diff and no earlier version. Its prompt is the diff prompt with
 what depends on the diff rewritten; it asks the translator to bring the
 target up to date with the current pages. It answers whether the diff helps.
-The diff prompt was tuned on these cases and the baseline's was not, which
-favours the diff.
+The diff prompt was chosen among several versions by running these cases.
+The baseline's was written once and not changed, which favours the diff.
