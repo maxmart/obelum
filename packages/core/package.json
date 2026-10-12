@@ -1,6 +1,6 @@
 {
   "name": "@obelum/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sync tracking for translated documents: every language keeps a copy of what it last saw of the others; staleness and the translator's brief are diffs against those copies",
   "license": "MIT",
   "type": "module",

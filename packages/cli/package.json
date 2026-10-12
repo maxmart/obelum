@@ -1,6 +1,6 @@
 {
   "name": "@obelum/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The obelum command: status, briefs, the four verbs, translation rounds and an auditor over an Obelum-tracked repository, using plain git",
   "license": "MIT",
   "type": "module",
@@ -27,16 +27,16 @@
     "prepublishOnly": "npm test && npm run build"
   },
   "dependencies": {
-    "@obelum/core": "^0.2.0"
+    "@obelum/core": "^0.3.0"
   },
   "peerDependencies": {
-    "@obelum/translator-claude": "^0.2.0"
+    "@obelum/translator-claude": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@obelum/translator-claude": { "optional": true }
   },
   "devDependencies": {
-    "@obelum/translator-claude": "^0.2.0",
+    "@obelum/translator-claude": "^0.3.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"

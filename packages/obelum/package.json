@@ -1,6 +1,6 @@
 {
   "name": "obelum",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Keeping translations of one document in step, without a server. The same package as @obelum/core.",
   "license": "MIT",
   "type": "module",
@@ -12,6 +12,6 @@
   "types": "./index.d.ts",
   "exports": { ".": { "types": "./index.d.ts", "default": "./index.js" } },
   "sideEffects": false,
-  "dependencies": { "@obelum/core": "^0.2.0" },
+  "dependencies": { "@obelum/core": "^0.3.0" },
   "publishConfig": { "access": "public" }
 }
