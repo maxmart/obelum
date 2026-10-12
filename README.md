@@ -9,10 +9,10 @@ Designed to use git for history and an LLM as the translator, but not locked to 
 Obelum is experimental. 
 It is used by [Plinto](https://github.com/maxmart/plinto), a CMS admin for static git-backed sites.
 
-The idea behind it is described in two blog posts:
+The idea behind it, a three-way translation merge, is described in two blog posts:
 
-- [Keeping translations in sync using an LLM-driven three-way merge](https://maxmart.github.io/posts/keeping-translations-in-sync/), about the simpler case with one source language.
-- [Sync translations in any direction](https://maxmart.github.io/posts/translate-any-direction/), about editing in any language.
+- [Three-way translation merge: keeping translated pages in sync with an LLM](https://maxmart.github.io/posts/three-way-translation-merge/), about the simpler case with one source language.
+- [Generalizing the three-way translation merge to any direction](https://maxmart.github.io/posts/translation-merge-any-direction/), about editing in any language.
 
 There is also a short [announcement](https://maxmart.github.io/posts/announcing-obelum/) of Obelum itself.
 
