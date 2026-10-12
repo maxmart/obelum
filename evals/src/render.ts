@@ -166,6 +166,10 @@ ${variants.some(v => v.style === 'diff') ? `<section class="about">
 <p><strong>About the diff column.</strong> The <em>diff</em> column is the translator given the diff and the current
 target only, without the source page. It shows what the source page adds to the diff: a diff shows what changed,
 not what the page no longer says anywhere.</p>
+${variants.some(v => v.style === 'difflook') ? `<p>The <em>difflook</em> column is the same, plus two tools: one to search the current page of another
+language for a text, and one to read lines of it. The translator decides when to use them; a run's tool calls show
+whether it did. The sentence in the prompt that describes the tools was written with the case
+<a href="cases/divergent--en-drops-klarna-everywhere.html">en-drops-klarna-everywhere</a> in mind, which favours it there.</p>` : ''}
 </section>` : ''}
 <h2>By group</h2>
 ${groupTable}

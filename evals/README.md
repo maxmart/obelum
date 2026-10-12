@@ -12,6 +12,7 @@ npm run eval -w evals -- --case locality --repeat 3            # ids containing 
 npm run eval -w evals -- --approach batch,check,plan           # one column per approach
 npm run eval -w evals -- --style hunks,cc:claude-opus-5-5      # the translator beside Claude Code
 npm run eval -w evals -- --style hunks,nodiff                  # beside a baseline with no diff
+npm run eval -w evals -- --style hunks,diff,difflook           # the diff alone, and with search and read
 npm run eval -w evals -- --mode peers,single                   # peer system beside single source
 npm run eval -w evals -- --judge --verbose                     # a model's verdict, diffs of failures
 npm run eval -w evals -- --case identical --dry                # print the prompts; no key, no call

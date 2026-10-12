@@ -75,8 +75,13 @@ lines around it; `check` skips the plan; `batch` is one shot. `diffStyle`:
 `hunks` (the default) shows each sibling as the target last saw it plus a
 diff; `inline` and `diff` are for comparison; `none` gives no diff and no
 earlier version, only the current page of each language in the brief, as a
-baseline for what the diff is worth. The `evals/` folder of the repository
-measures all of them.
+baseline for what the diff is worth. `lookup` (off by default) adds two
+tools, `search` and `read`, over the current page of each other language in
+the brief. It is meant for `diffStyle: 'diff'`: the model then gets only the
+diff, and looks at the page when what to do depends on what it says
+elsewhere, such as whether something a change removed is still mentioned
+anywhere. Each look is a `lookup` event. The `evals/` folder of the
+repository measures all of them.
 
 For evaluations, `claude({ apiKey, drive })` replaces what talks to the model
 with a recorded transcript or a probe; everything else runs for real.
