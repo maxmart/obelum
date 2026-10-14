@@ -57,12 +57,12 @@ own tools, settings, skills and CLAUDE.md files are left out
 (`src/subscription.ts`). A run stops when the subscription's limit is
 reached, and never uses extra usage.
 
-Claude Code reaches the API through a local forwarder: talking to
-Anthropic's host directly, it turns on features of its own that changed the
-results (one case passed 1 to 3 times in 10 instead of 10 in 10). The model
-still sees the tools as `mcp__obelum__<name>`, Claude Code still frames the
-conversation its own way, and the cost shown is Claude Code's list-price
-estimate.
+It is not the same measurement as an API run. The model sees the tools as
+`mcp__obelum__<name>`, Claude Code frames the conversation its own way and
+turns on features of its own, and the cost shown is Claude Code's list-price
+estimate. Results can differ: `fix/same-line-reworded` passed 1 to 3 times
+in 10 through the subscription and 10 in 10 over the API. Published results
+come from the API.
 
 ## Cases
 

@@ -11,22 +11,12 @@
  *
  * What still differs from the API: the model sees the tools as
  * mcp__obelum__<name>, Claude Code frames the conversation in its own way,
- * and the cost is Claude Code's list-price estimate.
- *
- * Claude Code reaches the API through a local forwarder that passes every
- * request on to api.anthropic.com unchanged. Talking to Anthropic's host
- * directly, Claude Code turns on features of its own (tool search, an advisor
- * tool, a served model catalogue, its own dispatch); with them, one case
- * passed 1 to 3 times in 10 where the API passes 10 in 10, and Claude Code's
- * captured request replayed over the API passed 10 in 10. Through the
- * forwarder it passed 12 in 12.
+ * and the cost is Claude Code's list-price estimate. Results are close to an
+ * API run but not the same measurement.
  *
  * A run stops as soon as the subscription's limit is reached or extra usage
  * would be billed, and every run after it ends at once with that error.
  */
-import http from 'node:http';
-import https from 'node:https';
-import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
@@ -69,26 +59,6 @@ export interface SubscriptionTotals {
   cost: number;
 }
 
-/** The forwarder's address, started on first use and shared by every run. */
-let forwarder: Promise<string> | null = null;
-function forward(): Promise<string> {
-  forwarder ??= new Promise(resolve => {
-    const server = http.createServer((req, res) => {
-      const up = https.request({ host: 'api.anthropic.com', path: req.url, method: req.method, headers: { ...req.headers, host: 'api.anthropic.com' } }, r => {
-        res.writeHead(r.statusCode ?? 502, r.headers);
-        r.pipe(res);
-      });
-      up.on('error', err => { res.writeHead(502); res.end(String(err)); });
-      req.pipe(up);
-    });
-    server.listen(0, '127.0.0.1', () => {
-      server.unref();
-      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
-    });
-  });
-  return forwarder;
-}
-
 /** Set once a limit is reached; every later run ends with it. */
 let stopped: string | null = null;
 
@@ -113,7 +83,6 @@ export function subscriptionDrive(onTotals: (t: SubscriptionTotals) => void): Dr
     const env = { ...process.env };
     delete env.ANTHROPIC_API_KEY;
     delete env.ANTHROPIC_AUTH_TOKEN;
-    env.ANTHROPIC_BASE_URL = await forward();
     const abort = new AbortController();
     const q = query({
       prompt: opts.userMessage,
