@@ -47,6 +47,23 @@ rewordings it cannot see the surroundings of.
 pages in a temporary folder, asked in plain words, with none of the local
 settings or MCP servers (`src/claude-code.ts`).
 
+## Running on a Claude subscription
+
+`--via subscription` sends the translator's own conversation through Claude
+Code instead of the API, so a run is billed to the subscription Claude Code
+is logged in with (`claude /login`); no key is needed unless you also judge.
+The system prompt, user message and tools are the translator's; Claude Code's
+own tools, settings, skills and CLAUDE.md files are left out
+(`src/subscription.ts`). A run stops when the subscription's limit is
+reached, and never uses extra usage.
+
+Claude Code reaches the API through a local forwarder: talking to
+Anthropic's host directly, it turns on features of its own that changed the
+results (one case passed 1 to 3 times in 10 instead of 10 in 10). The model
+still sees the tools as `mcp__obelum__<name>`, Claude Code still frames the
+conversation its own way, and the cost shown is Claude Code's list-price
+estimate.
+
 ## Cases
 
 A case (`src/case.ts`) is a document in memory, every language synced to
