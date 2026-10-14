@@ -52,7 +52,7 @@ beforeEach(async () => {
   write('content/news/sv/summer.mdx', page('sv', 'news'));
   write('content/news/no/summer.mdx', page('no', 'news'));
   git('add', '-A'); git('commit', '-q', '-m', 'content');
-  const r = await obelum('init', '--langs', 'sv,no,en', '--anchor', 'markdown', 'src/pages/{lang}/**/*.mdx', 'content/*/{lang}/*.mdx');
+  const r = await obelum('init', '--no-commit', '--langs', 'sv,no,en', '--anchor', 'markdown', 'src/pages/{lang}/**/*.mdx', 'content/*/{lang}/*.mdx');
   expect(r.code).toBe(0);
   git('add', '-A'); git('commit', '-q', '-m', 'obelum.json');
 });
@@ -83,16 +83,16 @@ describe('init, told plainly what went wrong', () => {
   beforeEach(() => { fs.rmSync(path.join(root, 'obelum.json')); });
 
   it('takes languages split into separate arguments, as PowerShell passes an unquoted --langs sv,no', async () => {
-    const r = await obelum('init', '--langs', 'sv', 'no', 'en', 'src/pages/{lang}/**/*.mdx');
+    const r = await obelum('init', '--no-commit', '--langs', 'sv', 'no', 'en', 'src/pages/{lang}/**/*.mdx');
     expect(r.code).toBe(0);
-    expect(JSON.parse(at('obelum.json'))).toEqual({ langs: ['sv', 'no', 'en'], documents: ['src/pages/{lang}/**/*.mdx'] });
+    expect(JSON.parse(at('obelum.json'))).toEqual({ langs: ['sv', 'no', 'en'], documents: ['src/pages/{lang}/**/*.mdx'], anchor: 'mdx' });
     expect(r.out).toContain(`wrote ${path.join(root, 'obelum.json')}`);
     expect(r.out).toContain('src/pages/{lang}/**/*.mdx: 3 files');
   });
 
   it('names what is missing: a second language, a pattern, {lang} in a pattern', async () => {
     expect((await obelum('init', '--langs', 'sv', 'src/pages/{lang}/*.mdx')).err).toContain('at least two languages; got only "sv"');
-    expect((await obelum('init', '--langs', 'sv,no')).err).toContain('no document pattern');
+    expect((await obelum('init', '--langs', 'fr,de')).err).toContain('found no fr/, de/ directory with documents in it');
     expect((await obelum('init', '--langs', 'sv,no', 'src/pages/*.mdx')).err).toContain('"src/pages/*.mdx" has no {lang} in it');
     expect(fs.existsSync(path.join(root, 'obelum.json'))).toBe(false);
   });
@@ -105,7 +105,7 @@ describe('init, told plainly what went wrong', () => {
     expect(r.err).toContain('Nothing was written');
     expect(fs.existsSync(path.join(root, 'obelum.json'))).toBe(false);
 
-    const ok = await obelumIn('src', 'init', '--langs', 'sv,no,en', 'src/pages/{lang}/*.mdx');
+    const ok = await obelumIn('src', 'init', '--no-commit', '--langs', 'sv,no,en', 'src/pages/{lang}/*.mdx');
     expect(ok.code).toBe(0);
     expect(ok.out).toContain('at the repository root, not in src');
   });
@@ -116,13 +116,63 @@ describe('init, told plainly what went wrong', () => {
   });
 });
 
+describe('init, finding what it can', () => {
+  beforeEach(() => {
+    git('rm', '-q', 'obelum.json'); git('commit', '-q', '-m', 'no config');
+  });
+
+  it('finds the languages and patterns from directories, commits the config and marks every page', async () => {
+    const r = await obelum('init');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(at('obelum.json'))).toEqual({
+      langs: ['no', 'sv', 'en'],
+      documents: ['content/news/{lang}/**/*.mdx', 'src/pages/{lang}/**/*.mdx'],
+      anchor: 'mdx',
+    });
+    expect(r.out).toContain('from the directories found');
+    expect(r.out).toContain('for one source language, add "source": "no"');
+    expect(git('log', '--format=%s', '-2').split('\n')).toEqual(['markAsSynced: every language of 2 documents', 'obelum: obelum.json']);
+    expect(git('status', '--porcelain')).toBe('');
+    expect((await obelum('status')).out).toBe('2 documents, 0 with a language behind');
+  });
+
+  it('with --langs, takes a language with no files yet and a source with no siblings yet', async () => {
+    for (const l of ['sv', 'no']) git('rm', '-q', '-r', `src/pages/${l}`, `content/news/${l}`);
+    git('commit', '-q', '-m', 'en only');
+    const r = await obelum('init', '--langs', 'en,de', '--source', 'en');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(at('obelum.json'))).toMatchObject({ langs: ['en', 'de'], documents: ['src/pages/{lang}/**/*.mdx'], source: 'en' });
+    expect(r.out).toContain('creates de for a page');
+    const s = await obelum('status', '--all');
+    expect(s.out).toContain('en: ok   de: missing');
+  });
+
+  it('names pages not committed, which it does not mark', async () => {
+    write('src/pages/sv/pricing.mdx', page('sv', 'line A ändrad', 'line B', 'line C'));
+    const r = await obelum('init');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('1 page is not committed and was not marked');
+    expect(r.out).toContain('  src/pages/sv/pricing.mdx');
+    expect(git('status', '--porcelain')).toBe('M src/pages/sv/pricing.mdx');   // trimmed
+  });
+
+  it('says what to give when nothing looks like a language directory', async () => {
+    git('rm', '-q', '-r', 'src', 'content'); git('commit', '-q', '-m', 'empty');
+    write('docs/intro.md', '# Intro\n');
+    const r = await obelum('init');
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('found no language directories');
+    expect(fs.existsSync(path.join(root, 'obelum.json'))).toBe(false);
+  });
+});
+
 describe('single source', () => {
   beforeEach(async () => {
     fs.rmSync(path.join(root, 'obelum.json'));
+    git('add', '-A'); git('commit', '-q', '-m', 'no config');
     const r = await obelum('init', '--langs', 'sv,no,en', '--source', 'en', 'src/pages/{lang}/**/*.mdx');
     expect(r.code).toBe(0);
-    git('add', '-A'); git('commit', '-q', '-m', 'single source');
-    expect((await obelum('mark', '--all')).out).toContain('marked 2 languages');   // sv and no; en keeps no copies
+    expect(r.out).toContain('marked 2 languages');   // sv and no; en keeps no copies
   });
 
   it('a change to en makes the targets stale; a change to a target needs nothing and makes nobody stale', async () => {

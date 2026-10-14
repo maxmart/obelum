@@ -1,7 +1,7 @@
 /**
  * The obelum command.
  *
- *   obelum init --langs sv,no,en 'src/pages/{lang}/**\/*.mdx' …
+ *   obelum init [--langs sv,no,en] ['src/pages/{lang}/**\/*.mdx' …] [--source en] [--no-commit]
  *   obelum status [--all] [--json]
  *   obelum brief <file> [--json]
  *   obelum edit <file>            commit the working copy of <file> as an edit
@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Brief, Session } from '@obelum/core';
-import { CONFIG_FILE, documentKeys, loadConfig, locate, matching, patternProblem, realPath, type Config } from './config.js';
+import { anchorFor, CONFIG_FILE, detect, documentKeys, loadConfig, locate, matching, patternProblem, realPath, type Config } from './config.js';
 import { Git } from './git.js';
 import { host, type Host } from './host.js';
 import { check } from './check.js';
@@ -60,7 +60,7 @@ function parse(argv: string[]): Args {
       if (eq > 0) { flags[a.slice(2, eq)] = a.slice(eq + 1); continue; }
       const name = a.slice(2);
       const next = rest[i + 1];
-      if (next !== undefined && !next.startsWith('--') && !['all', 'json', 'help', 'no-ask'].includes(name)) { flags[name] = next; i++; }
+      if (next !== undefined && !next.startsWith('--') && !['all', 'json', 'help', 'no-ask', 'no-commit'].includes(name)) { flags[name] = next; i++; }
       else flags[name] = true;
     } else positional.push(a);
   }
@@ -69,8 +69,10 @@ function parse(argv: string[]): Args {
 
 const USAGE = `usage: obelum <command> [options]
 
-  init --langs a,b,c <pattern>…   write ${CONFIG_FILE}; patterns contain {lang}
+  init [<pattern>…]               write ${CONFIG_FILE} and mark every page as synced, in commits;
+       [--langs a,b,c]            patterns contain {lang}; without them, content/en/, content/sv/, … are found
        [--source a]               translate from one language only (single-source mode)
+       [--no-commit]              write ${CONFIG_FILE} only
   status [--all] [--json]         which languages are behind, per document
   brief <file> [--json]           what a translator would be told for <file>
   edit <file>                     commit the working copy as an edit
@@ -89,7 +91,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
   try {
     switch (args.command) {
       case 'help': case '--help': case '-h': out(USAGE); return 0;
-      case 'init': return init(args, io);
+      case 'init': return await init(args, io);
     }
     const git = Git.open(io.cwd);
     try {
@@ -115,41 +117,55 @@ export async function run(argv: string[], io: Io): Promise<number> {
 
 // ---------------------------------------------------------------------------
 
-const INIT_USAGE = `usage: obelum init --langs sv,no,en [--source en] 'src/pages/{lang}/**/*.mdx' […]`;
+const INIT_USAGE = `usage: obelum init [--langs en,sv,de] [--source en] ['content/{lang}/**/*.md' …] [--no-commit]`;
 
 /** A language tag: en, sv, pt-BR, zh_Hant. */
 const isLang = (s: string) => /^[A-Za-z]{2,3}([-_][A-Za-z0-9]+)*$/.test(s);
 
-function init(args: Args, io: Io): number {
+async function init(args: Args, io: Io): Promise<number> {
   const fail = (message: string) => { io.stderr(`obelum init: ${message}`); return 2; };
-  const patterns = args.positional.filter(p => p.includes('{lang}'));
+  let patterns = args.positional.filter(p => p.includes('{lang}'));
   const loose = args.positional.filter(p => !p.includes('{lang}'));
   // PowerShell passes an unquoted `--langs en,sv` as two arguments, so "sv"
   // arrives among the patterns. A pattern always has {lang} in it; a bare
   // language tag without one is a language, wherever it stands.
-  const langs = [...(typeof args.flags.langs === 'string' ? args.flags.langs.split(',') : []), ...loose.filter(isLang)]
+  let langs = [...(typeof args.flags.langs === 'string' ? args.flags.langs.split(',') : []), ...loose.filter(isLang)]
     .map(s => s.trim()).filter(Boolean);
   const strays = loose.filter(p => !isLang(p));
   if (strays.length) return fail(`${strays.map(p => `"${p}"`).join(', ')} has no {lang} in it. A pattern needs {lang} where the language goes: 'src/pages/{lang}/**/*.mdx'.`);
-  if (langs.length < 2) return fail(`--langs needs at least two languages${langs.length ? `; got only "${langs[0]}"` : ''}.\n${INIT_USAGE}`);
   const twice = langs.filter((l, i) => langs.indexOf(l) !== i);
   if (twice.length) return fail(`"${twice[0]}" is listed twice in --langs.`);
-  if (!patterns.length) return fail(`no document pattern. A pattern says where each language's files are, with {lang} where the language goes.\n${INIT_USAGE}`);
-  for (const p of patterns) {
-    const problem = patternProblem(p);
-    if (problem) return fail(problem);
-  }
 
   const git = Git.open(io.cwd);
   const file = path.join(git.root, CONFIG_FILE);
   if (fs.existsSync(file)) { io.stderr(`obelum: ${file} already exists`); return 1; }
+  const files = git.workingPaths();
+
+  // No pattern given: look for language directories side by side.
+  let detected = false;
+  if (!patterns.length) {
+    const found = detect(files, langs.length ? langs : undefined);
+    if (!found) {
+      return fail(langs.length
+        ? `found no ${langs.map(l => `${l}/`).join(', ')} directory with documents in it. Give the pattern: 'src/pages/{lang}/**/*.mdx'.\n${INIT_USAGE}`
+        : `found no language directories (content/en/, content/sv/, … with files in common). ` +
+          `Name the languages, and the pattern if they are not directories: obelum init --langs en,sv,de ['content/{lang}/**/*.md'].\n${INIT_USAGE}`);
+    }
+    patterns = found.documents;
+    if (!langs.length) langs = found.langs;
+    detected = true;
+  }
+  if (langs.length < 2) return fail(`--langs needs at least two languages${langs.length ? `; got only "${langs[0]}"` : ''}.\n${INIT_USAGE}`);
+  for (const p of patterns) {
+    const problem = patternProblem(p);
+    if (problem) return fail(problem);
+  }
 
   // Patterns are matched from the repository root. Run from a directory
   // below it, a pattern written from where the user stands matches nothing;
   // when the same pattern under that directory does match, that is almost
   // certainly what was meant, and writing the file at the root would only
   // leave it somewhere unexpected.
-  const files = git.workingPaths();
   const below = subdirectory(git.root, io.cwd);
   const counts = patterns.map(p => matching(p, langs, files).length);
   if (below && counts.every(n => n === 0)) {
@@ -164,13 +180,34 @@ function init(args: Args, io: Io): number {
   const source = typeof args.flags.source === 'string' ? args.flags.source : undefined;
   if (source !== undefined && !langs.includes(source)) return fail(`--source "${source}" is not one of --langs (${langs.join(', ')}).`);
   const config: Config = { langs, documents: patterns, ...(source ? { source } : {}) };
-  if (typeof args.flags.anchor === 'string') config.anchor = args.flags.anchor as Config['anchor'];
-  fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
-  io.stdout(`wrote ${file}`);
+  const anchor = typeof args.flags.anchor === 'string' ? args.flags.anchor as Config['anchor'] : anchorFor(patterns);
+  if (anchor) config.anchor = anchor;
+  const json = JSON.stringify(config, null, 2) + '\n';
+  fs.writeFileSync(file, json);
+  io.stdout(`wrote ${file}${detected ? ', from the directories found' : ''}`);
   if (below) io.stdout(`  at the repository root, not in ${below}: patterns are matched from there`);
+  io.stdout(`  languages: ${langs.join(', ')}${source ? ` (translated from ${source})` : ''}`);
   patterns.forEach((p, i) => io.stdout(`  ${p}: ${counts[i] ? `${counts[i]} file${counts[i] === 1 ? '' : 's'}` : 'no files yet'}`));
-  io.stdout(`Next: commit ${CONFIG_FILE} together with your pages, then \`obelum mark --all\` to record every language as synced as the files stand.`);
-  return 0;
+  if (!source) io.stdout(`  every language can be edited and translated from; for one source language, add "source": "${langs[0]}"`);
+
+  if (args.flags['no-commit']) {
+    io.stdout(`Next: commit ${CONFIG_FILE} together with your pages, then \`obelum mark --all\` to record every language as synced as the files stand.`);
+    return 0;
+  }
+  // The config and the starting point in two commits, through objects like
+  // every verb: whatever else is staged or edited stays as it was. Only what
+  // is committed is marked; a page not committed yet is named, not taken in.
+  git.commit(`obelum: ${CONFIG_FILE}`, new Map([[CONFIG_FILE, json]]));
+  const code = await mark(host(git, config), { command: 'mark', positional: [], flags: { all: true } }, io);
+  const uncommitted = [...new Set(git.changedPaths())].filter(p => !p.startsWith('.obelum/') && locate(config, p) && git.readWorking(p) !== null);
+  if (uncommitted.length) {
+    io.stdout(`${uncommitted.length} page${uncommitted.length === 1 ? ' is' : 's are'} not committed and ${uncommitted.length === 1 ? 'was' : 'were'} not marked; \`obelum status\` says what each needs:`);
+    for (const p of uncommitted.slice(0, 5)) io.stdout(`  ${fromCwdRoot(git.root, io.cwd, p)}`);
+    if (uncommitted.length > 5) io.stdout(`  … and ${uncommitted.length - 5} more`);
+  }
+  const missing = langs.filter(l => !patterns.some(p => matching(p, [l], files).length));
+  if (missing.length) io.stdout(`Next: \`obelum translate --all <file>\` creates ${missing.join(', ')} for a page, from the others.`);
+  return code;
 }
 
 /** `dir` relative to `root`, with forward slashes; '' when it is the root. */
@@ -181,7 +218,11 @@ function subdirectory(root: string, dir: string): string {
 
 /** A repository path as the user would type it from where they stand. */
 function fromCwd(h: Host, io: Io, real: string): string {
-  return path.relative(path.resolve(io.cwd), path.join(h.git.root, real)).replace(/\\/g, '/');
+  return fromCwdRoot(h.git.root, io.cwd, real);
+}
+
+function fromCwdRoot(root: string, cwd: string, real: string): string {
+  return path.relative(path.resolve(cwd), path.join(root, real)).replace(/\\/g, '/');
 }
 
 /** The document and language a <file> argument names. */
@@ -353,7 +394,7 @@ async function mark(h: Host, args: Args, io: Io): Promise<number> {
     batch.flush(`markAsSynced: every language of ${keys.length} documents`);
     io.stdout(h.git.head() === before
       ? `every language of ${keys.length} document${keys.length === 1 ? ' was' : 's was'} already marked as synced; nothing to commit`
-      : `marked ${n} languages across ${keys.length} documents as synced, in one commit`);
+      : `marked ${n} language${n === 1 ? '' : 's'} across ${keys.length} document${keys.length === 1 ? '' : 's'} as synced, in one commit`);
     return 0;
   }
   const { key, lang } = target(h, args.positional[0], io);

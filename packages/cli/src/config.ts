@@ -119,3 +119,74 @@ export function documentKeys(config: Config, paths: Iterable<string>): string[] 
   }
   return [...keys].sort();
 }
+
+// ---------------------------------------------------------------------------
+// Detection, for `init` without patterns
+// ---------------------------------------------------------------------------
+
+/** Language codes common enough to take a directory of that name for one.
+ *  A guess only: two of them side by side with files in common. */
+const COMMON_LANGS = new Set(('ar bg bn ca cs cy da de el en es et eu fa fi fil fr ga gl he hi hr hu hy id is it ja ' +
+  'ka kk ko lt lv mk ms mt nb nl nn no pl pt ro ru sk sl sq sr sv sw ta th tl tr uk ur uz vi zh').split(' '));
+
+/** A directory name that reads as a language: en, sv, pt-BR, zh-Hant, en_US. */
+export const looksLikeLang = (s: string, langs?: string[]) =>
+  langs ? langs.includes(s) : COMMON_LANGS.has(s.split(/[-_]/)[0].toLowerCase()) && /^[a-z]{2,3}([-_][A-Za-z0-9]{2,4})?$/.test(s);
+
+/** File types worth translating as documents. */
+const DOC_EXTENSIONS = new Set(['md', 'mdx', 'markdown', 'html', 'txt', 'adoc', 'rst']);
+
+export interface Detected { langs: string[]; documents: string[]; files: number }
+
+/**
+ * Where documents live, guessed from the paths in the tree: a directory
+ * whose children are language directories (`content/en`, `content/sv`)
+ * holding files of a document type, at least two of them with a file in
+ * common unless `langs` names the languages. One pattern per directory and
+ * extension: `content/{lang}/**\/*.md`. Null when nothing looks like one.
+ */
+export function detect(paths: Iterable<string>, langs?: string[]): Detected | null {
+  // parent dir + extension → lang → files below the lang dir
+  const groups = new Map<string, Map<string, Set<string>>>();
+  for (const p of paths) {
+    if (p.startsWith('.obelum/') || p.split('/').some(s => s === 'node_modules' || s.startsWith('.'))) continue;
+    const ext = p.includes('.') ? p.slice(p.lastIndexOf('.') + 1).toLowerCase() : '';
+    if (!DOC_EXTENSIONS.has(ext)) continue;
+    const segs = p.split('/');
+    // The language directory nearest the root wins: content/en/blog/sv.md is en's.
+    const i = segs.findIndex((s, j) => j < segs.length - 1 && looksLikeLang(s, langs));
+    if (i < 0) continue;
+    const key = `${segs.slice(0, i).join('/')}\0${ext}`;
+    const byLang = groups.get(key) ?? new Map<string, Set<string>>();
+    const rest = byLang.get(segs[i]) ?? new Set<string>();
+    rest.add(segs.slice(i + 1).join('/'));
+    byLang.set(segs[i], rest);
+    groups.set(key, byLang);
+  }
+  const found: { pattern: string; langs: string[]; files: number }[] = [];
+  for (const [key, byLang] of groups) {
+    const shared = [...byLang.values()].some((files, i, all) => all.some((other, j) => j !== i && [...files].some(f => other.has(f))));
+    if (!langs && (byLang.size < 2 || !shared)) continue;
+    const [parent, ext] = key.split('\0');
+    found.push({
+      pattern: `${parent ? parent + '/' : ''}{lang}/**/*.${ext}`,
+      langs: [...byLang.keys()],
+      files: [...byLang.values()].reduce((n, s) => n + s.size, 0),
+    });
+  }
+  if (!found.length) return null;
+  found.sort((a, b) => a.pattern.localeCompare(b.pattern));
+  // Languages in order of how many files each has, the likeliest source first.
+  const count = new Map<string, number>();
+  for (const [, byLang] of groups) for (const [l, files] of byLang) count.set(l, (count.get(l) ?? 0) + files.size);
+  const all = langs ?? [...new Set(found.flatMap(f => f.langs))].sort((a, b) => (count.get(b) ?? 0) - (count.get(a) ?? 0) || a.localeCompare(b));
+  return { langs: all, documents: found.map(f => f.pattern), files: found.reduce((n, f) => n + f.files, 0) };
+}
+
+/** The anchor the patterns' file type suggests, or undefined for git's. */
+export function anchorFor(patterns: string[]): Config['anchor'] {
+  const exts = new Set(patterns.map(p => p.slice(p.lastIndexOf('.') + 1).toLowerCase()));
+  if (exts.size !== 1) return undefined;
+  const [ext] = exts;
+  return ext === 'mdx' ? 'mdx' : ext === 'md' || ext === 'markdown' ? 'markdown' : undefined;
+}

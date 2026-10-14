@@ -15,13 +15,20 @@ npm install @obelum/translator-claude # for `obelum translate`
 ## Setting up a repository
 
 `obelum.json` at the repository root names the languages and where documents
-live, as path patterns with one `{lang}` in them:
+live, as path patterns with one `{lang}` in them. With your pages committed:
 
 ```sh
-obelum init --langs sv,no,en --anchor mdx 'src/pages/{lang}/**/*.mdx' 'content/*/{lang}/*.mdx'
-git add obelum.json && git commit -m "obelum.json"
-obelum mark --all          # every language synced to every other, as the files stand; one commit
+obelum init                                  # finds content/en/, content/sv/, … by itself
+obelum init --langs en,sv,de --source en     # English exists; sv and de are to be made from it
+obelum init --langs sv,no,en 'src/pages/{lang}/**/*.mdx' 'content/*/{lang}/*.mdx'
 ```
+
+`init` writes `obelum.json`, commits it, and marks every committed page as
+synced as the files stand (`obelum mark --all`), in two commits. Without
+patterns it looks for directories named after languages side by side, with
+files in common unless `--langs` names them, one pattern per directory and
+file type. `--no-commit` writes the file only. The `anchor` follows the file
+type (`.mdx`, `.md`) unless `--anchor` says otherwise.
 
 A document is a pattern with `{lang}` left in: `src/pages/{lang}/pricing.mdx`
 names every language's file at once. Its synced copies live at
@@ -41,8 +48,8 @@ a correction as not to be translated. A change to a target needs nothing:
 commit it. `status` says which of these applies to a changed file.
 
 `anchor` says which lines a brief's diff names its hunks after: `mdx` (a
-line starting with `<`), `markdown` (a heading), or `git` (the default, a
-line starting with a letter). `instructions` may name a file whose contents
+line starting with `<`), `markdown` (a heading), or `git` (a line starting
+with a letter; the default for other file types). `instructions` may name a file whose contents
 are handed to the translator verbatim, a glossary and format rules.
 
 ## Commands
