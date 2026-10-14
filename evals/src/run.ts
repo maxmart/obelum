@@ -19,9 +19,12 @@
  * --mode peers,single (single runs each case whose steps change one language
  * other than the target in single-source mode, with that language as the
  * source; the others are skipped), --dry (print each prompt and stop; no key,
- * no API call). Defaults are the translator's own: hunks, plan, merged, peers.
+ * no API call), --via api,subscription (subscription sends the translator's
+ * conversation through Claude Code, billed to its login; see subscription.ts).
+ * Defaults are the translator's own: hunks, plan, merged, peers.
  *
- * The key comes from ANTHROPIC_API_KEY, or from evals/.env.
+ * The key comes from ANTHROPIC_API_KEY, or from evals/.env. With --via
+ * subscription no key is needed, except for --judge.
  */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -35,6 +38,7 @@ import { sourceOf, stage, type Case, type FixMode, type Mode } from './case.js';
 import { cases as allCases } from './cases/index.js';
 import { judge, judgeUsage, type Verdict } from './judge.js';
 import { request, runClaudeCode } from './claude-code.js';
+import { subscriptionDrive } from './subscription.js';
 import { dollars, TRANSLATOR_DEFAULT, TRANSLATOR_EFFORT } from './prices.js';
 
 type Style = DiffStyle | 'nodiff' | 'difflook' | 'cc';
@@ -74,6 +78,7 @@ const { values: args } = parseArgs({
     'judge-model': { type: 'string', default: 'claude-opus-5-5' },
     verbose: { type: 'boolean', default: false },
     dry: { type: 'boolean', default: false },
+    via: { type: 'string', default: 'api' },
   },
 });
 
@@ -127,8 +132,10 @@ if (args.dry) {
 }
 
 try { process.loadEnvFile(here('../.env')); } catch { /* no .env: the environment must have the key */ }
+if (args.via !== 'api' && args.via !== 'subscription') throw new Error(`unknown --via: ${args.via}`);
+const viaSubscription = args.via === 'subscription';
 const apiKey = process.env.ANTHROPIC_API_KEY;
-if (!apiKey) {
+if (!apiKey && (!viaSubscription || args.judge)) {
   console.error('ANTHROPIC_API_KEY is not set. Put it in evals/.env (ANTHROPIC_API_KEY=sk-ant-...) or the environment.');
   process.exit(1);
 }
@@ -205,10 +212,18 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
   const usage: Usage = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0, turns: 0 };
   let prompt = { system: '', user: '' };
   const actions: string[] = [];
+  let cost: number | undefined;
   const drive: DriveFn = opts => {
     prompt = { system: opts.system, user: opts.userMessage };
     // Passed through as is; only each tool call is noted on its way out.
-    const inner = driveClaudeAgent({
+    const inner = viaSubscription ? subscriptionDrive(t => {
+      Object.assign(usage, { input: t.input, cacheWrite: t.cacheWrite, cacheRead: t.cacheRead, output: t.output, turns: t.turns });
+      cost = t.cost;
+    })({
+      ...opts,
+      ...(args.model ? { model: args.model } : {}),
+      ...(args.effort ? { effort: args.effort as never } : {}),
+    }) : driveClaudeAgent({
       ...opts,
       ...(args.model ? { model: args.model } : {}),
       ...(args.effort ? { effort: args.effort as never } : {}),
@@ -230,7 +245,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
       }
     })();
   };
-  const translator = claude({ apiKey: apiKey!, instructions: c.instructions, diffStyle: diffStyleOf(style), lookup: lookupOf(style), approach: v.approach, drive });
+  const translator = claude({ apiKey: apiKey ?? 'subscription', instructions: c.instructions, diffStyle: diffStyleOf(style), lookup: lookupOf(style), approach: v.approach, drive });
 
   const started = Date.now();
   const events: TranslationEvent[] = [];
@@ -257,6 +272,7 @@ async function runOne(c: Case, v: Variant, rep: number): Promise<RunResult> {
     prompt,
     actions,
     questions,
+    ...(cost !== undefined ? { cost } : {}),
   };
 }
 
