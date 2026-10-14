@@ -74,6 +74,14 @@ describe('single source', () => {
     expect(await stale(session)).toEqual({ en: [], sv: [], no: [] });
   });
 
+  it('a fix on the source skips a target that does not exist yet, which can still be made from the whole source', async () => {
+    const { session, store } = single({ en: 'Helo\n', sv: 'Hej\n' });
+    await session.markAsSynced('sv');
+    expect((await session.fix('en', 'Hello\n')).merged).toEqual(['sv']);
+    expect(store.has('.obelum/no/en')).toBe(false);
+    expect((await session.brief('no')).langDiffs.map(d => [d.lang, d.base, d.content])).toEqual([['en', '', 'Hello\n']]);
+  });
+
   it('refuses a fix on a target and a sync of the source, and says why', async () => {
     const { session } = single({ en: 'Hello\n', sv: 'Hej\n', no: 'Hei\n' });
     await expect(session.fix('sv', 'Hej!\n')).rejects.toThrow(/sv is a target.*needs no fix/);

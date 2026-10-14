@@ -303,8 +303,10 @@ describe('15. birth: the page exists only in no', () => {
       '@@ -0,0 +1,4 @@\n+Pricing (no)\n+line A\n+line B\n+line C');
     expect((await session.brief('sv')).langDiffs.map(d => d.base)).toEqual(['']);
 
-    expect(await session.sync('sv', page('sv', ...ABC))).toEqual({ lang: 'sv', merged: ['no', 'en'], conflicted: [] });
-    expect(await matrix(session)).toEqual({ sv: 'no:ok en:ok', no: 'sv:ok en:ok', en: 'sv:ok no:STALE' });
+    // en has no file yet, so it keeps no copies: it stays behind on both, whole files.
+    expect(await session.sync('sv', page('sv', ...ABC))).toEqual({ lang: 'sv', merged: ['no'], conflicted: [] });
+    expect(await matrix(session)).toEqual({ sv: 'no:ok en:ok', no: 'sv:ok en:ok', en: 'sv:STALE no:STALE' });
+    expect((await session.brief('en')).langDiffs.map(d => [d.lang, d.base])).toEqual([['sv', ''], ['no', '']]);
     expect(await session.sync('en', page('en', ...ABC))).toEqual({ lang: 'en', merged: ['sv', 'no'], conflicted: [] });
     expect(await matrix(session)).toEqual(ALL_OK);
     expect((await session.stale()).en.missing).toBe(false);
@@ -351,8 +353,19 @@ describe('16. a round: edit, sync every sibling, done', () => {
     const round = session.syncAll();
     await round.sync('no', page('no', 'line A endret', 'line B', 'line C'));
     expect(await round.done()).toEqual(['sv']);
-    // no's sync fanned out into en's missing copy of no (the birth rule), so en is behind on sv only.
-    expect((await session.stale()).en).toEqual({ missing: true, stale: ['sv'] });
+    // en has no file, so no's sync wrote it no copy: it is behind on both.
+    expect((await session.stale()).en).toEqual({ missing: true, stale: ['sv', 'no'] });
+  });
+
+  it('a fix fans out into no missing language, so it can still be made', async () => {
+    const { session, repo } = fresh();
+    for (const p of [...repo.tree.keys()]) if (p.includes('/en/') || p.includes('.obelum/en/')) repo.tree.delete(p);
+    repo.commit('en gone');
+    await session.edit('sv', page('sv', 'line A ändrad', 'line B', 'line C'));
+    await session.sync('no', page('no', 'line A endret', 'line B', 'line C'));
+    expect(await session.fix('sv', page('sv', 'line A ändrad', 'line B', 'line C (rättad)'))).toEqual({ lang: 'sv', merged: ['no'], conflicted: [] });
+    expect([...repo.tree.keys()].filter(p => p.startsWith('.obelum/en/'))).toEqual([]);
+    expect((await session.brief('en')).langDiffs.map(d => d.lang)).toEqual(['sv', 'no']);
   });
 });
 

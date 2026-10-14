@@ -124,6 +124,10 @@ export function obelum(document: Document): Session {
   async function fanoutToSiblings(lang: string, old: string, next: string, result: FanoutResult): Promise<FanoutResult> {
     for (const viewer of langs) {
       if (viewer === lang || !tracked(viewer, lang)) continue;
+      // A language with no file yet keeps no copies: it is briefed with
+      // every sibling's whole file when it is made. A copy written now would
+      // read as synced, and leave it nothing to be made from.
+      if ((await read(real(viewer))) === null) continue;
       const copy = await read(copyOf(viewer, lang));
       // A missing synced file is an empty base: the sibling never saw this
       // language, and is synced to it now rather than given it as a diff.
