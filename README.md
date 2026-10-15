@@ -1,7 +1,8 @@
 # Obelum
 
-Obelum is a typescript library to help keep documents in sync between languages. There is no master/primary 
-language, you can edit any of them and have changes propagate to the others. 
+Obelum is a typescript library to help keep documents in sync between languages. It works in two ways: 
+with one source language that the others are translated from, or with no source language, where you can 
+edit any of them and have changes propagate to the others.
 Also supports keeping language versions structurally different - for localizing marketing for example.
 
 Designed to use git for history and an LLM as the translator, but not locked to it. 

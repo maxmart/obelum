@@ -20,10 +20,38 @@ through its filesystem. The same shape applies there — `writeBlob`,
 ## Hunk-level fix
 
 A fix whose merge conflicts on one hunk leaves that sibling's copy untouched
-entirely, and the sibling sees the whole fix as news. Applying the clean
+entirely, and the whole fix is in the sibling's next diff. Applying the clean
 hunks and leaving only the conflicting one (`diff3Merge` gives the regions)
 would narrow what the sibling is told. A refinement, not a correctness
 matter; measure how often whole-file conflicts happen on real fixes first.
+
+## Learning from fixes
+
+A fix is a person saying "the translation was wrong here, and this is
+right", and it is the one change the translator never sees: the brief is
+copy against real file, and a fix is already in the copy. That is correct
+and should stay so. But the correction itself is worth something, and it
+exists as a diff in exactly two places: in the fix verb's hands at the
+moment it merges old L → new L into the siblings' copies, and afterwards in
+the log, since every verb is one commit naming what it wrote.
+
+An auditor, separate from the translator, could read fixes from either
+place and propose, never apply:
+
+- a glossary entry or a style note, when the fix is a term or tone choice
+  ("association" became "club"), so the glossary grows from corrections
+  instead of being written up front;
+- the same fix on other pages, when the pattern the fix corrected appears
+  in other files translated with the same brief; a batch of fixes, which
+  `fix` already records without making anyone stale.
+
+Both keep the invariant: the copies still say the siblings have seen the
+change, the brief still excludes it. The fix stays hidden from the
+translator and visible to the auditor.
+
+The caveat is the one the fix verb exists for: a fix is sometimes a
+localization, not a correction, and nothing in the diff says which. So the
+auditor proposes and a person confirms, in a commit like any other.
 
 ## More translators
 
